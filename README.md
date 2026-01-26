@@ -8,7 +8,7 @@ This package uses the `Matrix` package as well as standard `base` `R` to generat
 
 Within a given health state, patients can do one of three things:
 
-- `remain`: The patient can stay in this state (i.e., remain on treatment in the current line)
+- `stay`: The patient can stay in this state (i.e., stay on treatment in the current line)
 - `advance`: The patient can move to a (i.e., any) later tunnel-state
 - `die`: The patient can die whilst in this state
 
@@ -30,14 +30,26 @@ There several features to the specification of a model following this framework:
 - The rest of the matrix does **not** change over time, as the `advance` probabilities depend on `d` (time in current state), which is tracked by the tunnel states and is compiled into the matrix itself. This is referred to as `m2` in the code and documentation.
 - `m1` has 1 row and `matrix_size = ( th + 2 ) * n_tunnels` columns, and is consequently relatively small even for large `th`.
 - `m2` has dimensions `matrix_size` by `matrix_size`, and has an **empty top row**
-- Within `m2` the transition probabilities are arranged such that each tunnel-state only has non-zero probabilities to `remain` in the same tunnel-state, `advance` to later tunnel-states, or `die`, rendering `m2` mostly "empty" (i.e., sparse).
-- In `m2`, `remain` probabilities are located in a superdiagonal (1) position (i.e., one to the right of the main diagonal for that tunnel-state), whilst `advance` probabilities are arranged **vertically** in positions further to the right (corresponding to the `+1th` cell of the previous tunnel block), and `die` probabilities are located in the last column. Visually, this looks like one long staircase going from top left to bottom right, with a series of vertical lines:
-
+- Within `m2` the transition probabilities are arranged such that each tunnel-state only has non-zero probabilities to `stay` in the same tunnel-state, `advance` to later tunnel-states, or `die`, rendering `m2` mostly "empty" (i.e., sparse).
+- In `m2`, `stay` probabilities are located in a superdiagonal (1) position (i.e., one to the right of the main diagonal for that tunnel-state), whilst `advance` probabilities are arranged **vertically** in positions further to the right (corresponding to the `+1th` cell of the previous tunnel block), and `die` probabilities are located in the last column. Visually, this looks like one long staircase going from top left to bottom right, with a series of vertical lines:
 
 <img width="653" height="620" alt="image" src="https://github.com/user-attachments/assets/e32b19c8-e425-4a6a-9908-a03b1df4f1c1" />
 
+Note here that the model is for two active treatment lines, best supportive care, and death, with the ability to "skip" treatment lines or go straight to BSC from any position in the pathway. The vertical lines are transitions to subsequent tunnel-states, whilst the diagonal lines (which are actually superdiagonal (1)), are `stay` probabilities.
 
+The functions in this package simply compile `m1` (which is the missing top row of the above image) and `m2` (the image), and then run a Markov engine column-wise using sparse matrix multiplication to generate the Markov trace.
 
+The Markov engine itself is remarkably simple. Here is an example:
 
+```r
+pop <- matrix(0, nrow = matrix_size, ncol = th)
+pop[1, 1] <- 1
+for (cyc in 2:th) {
+  pop[, cyc] <- drop(pop[1, cyc - 1] %*% m1[[cyc]]) +
+    drop(pop[, cyc - 1] %*% m2)
+}
+```
 
+Put simply, a population matrix `pop` is made with 100% of the cohort in the first state at baseline. Note that this matrix has time as columns, and states as rows. This is to optimise the performance of `R`, which is "column-major" or in other words substantially faster at accessing and manipulating columns than rows. Each cycle, the updated population is the `t-1`th population in the first state multiplied by the corresponding `m1` (stored in a list here with one `m1` for each model cycle), plus the whole vector of population in `t-1` multiplied by `m2`.
 
+This looks very simple, but in reality can produce any number of tunnel states with probabilities of skipping states and within-state tracking to any level of complication. This enables and simplifies model structures which are difficult to implement outside of patient-level simulation.
