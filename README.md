@@ -32,3 +32,12 @@ There several features to the specification of a model following this framework:
 - `m2` has dimensions `matrix_size` by `matrix_size`, and has an **empty top row**
 - Within `m2` the transition probabilities are arranged such that each tunnel-state only has non-zero probabilities to `remain` in the same tunnel-state, `advance` to later tunnel-states, or `die`, rendering `m2` mostly "empty" (i.e., sparse).
 - In `m2`, `remain` probabilities are located in a superdiagonal (1) position (i.e., one to the right of the main diagonal for that tunnel-state), whilst `advance` probabilities are arranged **vertically** in positions further to the right (corresponding to the `+1th` cell of the previous tunnel block), and `die` probabilities are located in the last column. Visually, this looks like one long staircase going from top left to bottom right, with a series of vertical lines:
+
+
+<img width="653" height="620" alt="image" src="https://github.com/user-attachments/assets/e32b19c8-e425-4a6a-9908-a03b1df4f1c1" />
+
+
+
+
+
+
