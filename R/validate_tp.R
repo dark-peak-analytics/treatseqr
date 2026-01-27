@@ -1,13 +1,12 @@
-#' Validate and Sanitize Transition Probability Source List
+#' Validate and Sanitize Transition Probability List for Sequence Modelling
 #'
 #' Validates that the transition probability list (`tp_source`) follows the
 #' strict structural rules required for sparse matrix extrapolation. It checks
 #' for reducing lengths, topological consistency of state names, consistent
 #' time horizons, and valid probability values. It also sanitizes the list by
-#' replacing `NULL` entries with zero vectors.
+#' replacing `NULL` entries with zero vectors of the correct length.
 #'
-#' @param tp_source A named list of lists containing transition probability
-#' vectors. The structure must follow specific rules:
+#' Specifically, this function ensures:
 #'   \itemize{
 #'     \item The list lengths must reduce by 1 sequentially (e.g., 5, 4, 3, 2,
 #'     1).
@@ -16,10 +15,15 @@
 #'     \item All probability vectors must have the same length (number of
 #'     cycles).
 #'     \item Probabilities must be non-negative and sum to <= 1 (row-wise).
+#'     \item Any `NULL` transition vectors are replaced with numeric vectors of
+#'     zeros of the correct length.
 #'   }
 #'
+#' @param tp_source A named list of lists containing transition probability
+#'   vectors. The structure must follow specific rules as described above.
+#'
 #' @return The sanitized `tp_source` list where all `NULL` entries have been
-#'   replaced with vectors of zeros.
+#'   replaced with vectors of zeros of the correct length.
 #' @export
 validate_tp_source <- function(tp_source) {
   assertthat::assert_that(
@@ -29,24 +33,18 @@ validate_tp_source <- function(tp_source) {
   )
 
   n_states <- length(tp_source)
-  assertthat::assert_that(n_states > 0, msg = "tp_source cannot be empty")
-
-  # 1. Length validation (reducing by 1)
-  element_lengths <- vapply(tp_source, length, numeric(1))
-
-  # The first element dictates the starting size. The sequence must go down to
-  # 1.
-  expected_lengths <- seq(
-    from = element_lengths[1],
-    by = -1,
-    length.out = n_states
-  )
-
   assertthat::assert_that(
-    element_lengths[n_states] == 1,
-    msg = "The last element of tp_source must have length 1"
+    n_states > 1,
+    msg = paste0(
+      "'tp_source' must have length greater than 1 otherwise there are no",
+      " tunnel states. The death state should not be included as there is",
+      " nowhere to transition to from dead"
+    )
   )
 
+  # Length validation (reducing n_states:1)
+  element_lengths <- vapply(tp_source, length, numeric(1))
+  expected_lengths <- seq(from = n_states, by = -1, length.out = n_states)
   assertthat::assert_that(
     all(element_lengths == expected_lengths),
     msg = sprintf(
@@ -56,32 +54,28 @@ validate_tp_source <- function(tp_source) {
     )
   )
 
-  # 2. Topological Naming Validation ("Backwards" check)
-  # The keys of state i+1 must be a subset of the keys of state i.
-  if (n_states > 1) {
-    for (i in 1:(n_states - 1)) {
-      curr_names <- names(tp_source[[i]])
-      next_names <- names(tp_source[[i + 1]])
+  # Name check. Checks that names in next tunnel are strict subset of precedent
+  for (i in seq_len(n_states - 1)) {
+    curr_names <- names(tp_source[[i]])
+    next_names <- names(tp_source[[i + 1]])
 
-      assertthat::assert_that(
-        !is.null(curr_names) && !is.null(next_names),
-        msg = "All inner lists in tp_source must be named"
-      )
+    assertthat::assert_that(
+      !is.null(curr_names) && !is.null(next_names),
+      msg = "All inner lists in tp_source must be named"
+    )
 
-      missing_names <- setdiff(next_names, curr_names)
-      assertthat::assert_that(
-        length(missing_names) == 0,
-        msg = sprintf(
-          "Topology error: State '%s' contains transitions to {%s} which are not present in the previous state '%s'.",
-          names(tp_source)[i + 1],
-          paste(missing_names, collapse = ", "),
-          names(tp_source)[i]
-        )
+    missing_names <- setdiff(next_names, curr_names)
+    assertthat::assert_that(
+      length(missing_names) == 0,
+      msg = sprintf(
+        "Topology error: State '%s' contains transitions to {%s} which are not present in the previous state '%s'.",
+        names(tp_source)[i + 1],
+        paste(missing_names, collapse = ", "),
+        names(tp_source)[i]
       )
-    }
+    )
   }
 
-  # 3. Cycle Detection & Sanitization
   # Find the number of cycles from the first non-null, non-empty vector
   n_cyc <- NULL
 
@@ -157,5 +151,5 @@ validate_tp_source <- function(tp_source) {
     )
   }
 
-  return(sanitized_tp)
+  sanitized_tp
 }

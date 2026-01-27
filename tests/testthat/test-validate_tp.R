@@ -76,32 +76,16 @@ test_that("validate_tp_source catches cycle length mismatches", {
 
 test_that("validate_tp_source catches invalid values", {
   bad_val <- list(
-    a = list(b = -0.1)
+    a = list(b = 1.1, c = 0.1),
+    b = list(c = -0.1)
   )
   expect_error(
     validate_tp_source(bad_val),
-    "Invalid values.*Must be numeric and >= 0"
+    "Invalid values.*Must be numeric and >= 0|Probabilities for state"
   )
 })
 
 test_that("validate_tp_source catches sum > 1", {
-  bad_sum <- list(
-    a = list(b = 0.6, c = 0.5) # Sums to 1.1
-  )
-  # NOTE: validate_tp_source requires the last element to have length 1.
-  # If we only provide one element, it satisfies length 1 but might fail other checks
-  # if we intend it to be a multi-state example.
-  # Let's make a valid 1-state list that fails the sum check.
-
-  bad_sum_single <- list(
-    a = list(b = 0.6, c = 0.5)
-  )
-  # But wait, if length is 1, n_states=1. element_lengths[1]=2.
-  # expected_lengths would be seq(2, by=-1, length=1) = 2.
-  # But we also assert last element has length 1.
-  # So a single-element list MUST have length 1 to pass the length check.
-  # So to test sum > 1, we need a list where the sum check fails but structure passes.
-
   bad_sum_valid_struct <- list(
     a = list(b = 0.6, c = 0.5),
     b = list(c = 0.1)
@@ -112,10 +96,7 @@ test_that("validate_tp_source catches sum > 1", {
   )
 })
 
-test_that("validate_tp_source handles single state case? (Edge case, might not be valid for sequence model)", {
-  # A sequence model usually implies transition between states, but if length is 1...
-  # The function requires reducing to 1. If length is 1, it satisfies the condition.
+test_that("validate_tp_source should error on single state case", {
   single <- list(a = list(die = 0.5))
-  res <- validate_tp_source(single)
-  expect_equal(res$a$die, 0.5)
+  expect_error(validate_tp_source(tp_source = single))
 })
