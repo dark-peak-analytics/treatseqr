@@ -16,7 +16,7 @@
 #' @examples
 #' m_size(5, 2)
 #' @export
-m_size <- function(n_cycles, n_tunnels) {
+m_size <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
   assertthat::assert_that(
     is.numeric(n_cycles),
     length(n_cycles) == 1,
@@ -31,14 +31,73 @@ m_size <- function(n_cycles, n_tunnels) {
     n_tunnels == as.integer(n_tunnels),
     msg = "n_tunnels must be a single positive integer"
   )
-  # m1_columns gives the indices for the top row of the transition matrix:
-  # 1 (stay in first state), then each tunnel state entry (every n_cycles
-  #   steps).
-  m1_columns <- c(1, seq(2, (n_tunnels * n_cycles) + 1, by = n_cycles))
-  matrix_size <- max(m1_columns)
+  assertthat::assert_that(
+    length(pre_tunnel_states) == 1,
+    is.numeric(pre_tunnel_states),
+    pre_tunnel_states == floor(pre_tunnel_states),
+    pre_tunnel_states >= 1,
+    pre_tunnel_states <= 10,
+    msg = "'pre_tunnel_states' must be a single positive integer. Limit of 10"
+  )
 
+  # pre-tunnel row/column indices. These are diagonal elements as probability of
+  # staying in pre-tunnel states:
+  pt_i <- seq_len(pre_tunnel_states)
+
+  # starting indices for first tunnel's top left element. remember that this
+  # element is empty as probability of stayin in tunnel is superdiagonal (1)
+  tun_start <- c(pre_tunnel_states + 1, pre_tunnel_states + 1)
+
+  # number of destinations from the first health state (pre-tunnel)
+  n_dest_first <- n_tunnels + pre_tunnel_states + 1
+  n_dest_last_non_tunnel <- n_dest_first - pre_tunnel_states + 1
+  n_dest <- n_dest_first:n_dest_last_non_tunnel
+
+  # indices for the top left of each tunnel block are the same for all
+  # pre-tunnel states, so work them out just once:
+  tunnel_starts <- seq(
+    from = tun_start[2],
+    to = tun_start[2] + (n_tunnels - 1) * n_cycles,
+    by = n_cycles
+  )
+
+  # add one row/column at the extreme right and bottom for the dead state:
+  dead_rowcol <- max(tunnel_starts) + n_cycles + 1
+
+  tun_j <- c(tunnel_starts, dead_rowcol)
+
+  # rows for m1. Note each successive pre-tunnel has one less "place to go".
+  # This is relatively simple to derive:
+  m1_i <- rep(
+    seq_len(pre_tunnel_states),
+    times = n_dest
+  )
+
+  # The columns are more involved. essentially columns to move forward to
+  # another state, and then the set of tunnel "beginnings", plus dead for each
+  # pre-tunnel.
+  m1_ijx <- Reduce(
+    x = pt_i,
+    init = matrix(
+      c(m1_i, rep(rep(0, length(m1_i)), 2)),
+      ncol = 3,
+      dimnames = list(NULL, c("i", "j", "x"))
+    ),
+    function(coord_mat, pre_tun_number) {
+      # pull out the relevant rows of the coordinate matrix for this pre-tunnel
+      relevant_rows <- which(coord_mat[, "i"] == pre_tun_number)
+
+      # identify the movements patients can make for the pre-tunnel states
+      pre_tun_moves <- pre_tun_number:pre_tunnel_states
+      j_vals <- c(pre_tun_moves, tun_j)
+      coord_mat[relevant_rows, "j"] <- j_vals
+      coord_mat
+    }
+  )
+
+  # return a list of a coordinate matrix for m1, and bounds for m2
   list(
-    m1 = m1_columns,
-    matrix_size = matrix_size
+    m1_ijx = m1_ijx,
+    matrix_size = dead_rowcol
   )
 }
