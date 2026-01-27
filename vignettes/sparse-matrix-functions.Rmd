@@ -40,5 +40,11 @@ Visually, this is simply horizontally slicing up `m2` in the obvious places, so 
 
 # Determining the size of `M`
 
+The size of `M` is determined by several things:
 
+- The number of pre-tunnel states, `n_pre`
+- The death state, which is always 1
+- The time horizon, `th`
+- The number of tunnels, `k`
 
+`M` is square, and therefore has dimensions of `matrix_size = (n_pre + (k * th) + 1)`. The function `m_size` provides this value as well as the indicies for use in `m1`
