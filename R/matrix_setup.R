@@ -1,22 +1,35 @@
-#' Calculate Matrix Size and Top Row Indices for Sequence Model
+#' Specify Matrix Indices and Size for Sequence Model with Tunnel States
 #'
-#' Computes the indices of the top row (`m1`) of the main transition matrix and
-#' the overall matrix size, given the number of cycles and tunnel states.
+#' Computes the coordinate matrices for the main transition matrix of a sequence
+#' model with tunnel states, as well as the overall matrix size, given the
+#' number of cycles, tunnel states, and pre-tunnel states.
 #'
-#' @param n_cycles Integer. Number of cycles in the model (must be > 0).
-#' @param n_tunnels Integer. Number of tunnel states in the model (must be > 0).
+#' @param n_cycles Integer. Number of cycles in each tunnel (must be > 0).
+#' @param n_tunnels Integer. Number of tunnel state blocks (must be > 0).
+#' @param pre_tunnel_states Integer. Number of pre-tunnel states before entering
+#' the first tunnel (default is 1, must be between 1 and 10).
 #'
 #' @return A list with:
 #'   \describe{
-#'     \item{m1}{Integer vector of column indices for the top row of the
-#'     matrix.}
-#'     \item{matrix_size}{Integer. The total number of columns (states) in the
-#'     matrix.}
+#'     \item{m1_ijx}{A matrix of coordinates (i, j, x) for the pre-tunnel state
+#'     transitions.}
+#'     \item{m2_ijx}{A matrix of coordinates (i, j, x) for the tunnel state
+#'     transitions and death state.}
+#'     \item{matrix_size}{Integer. The total number of states (rows/columns) in
+#'     the transition matrix.}
 #'   }
+#' @details
+#' The function generates coordinate matrices for efficiently populating a
+#' sparse transition matrix for a sequence model with tunnel states. The
+#' \code{m1_ijx} matrix contains the coordinates for transitions from pre-tunnel
+#' states, while \code{m2_ijx} contains the coordinates for transitions within
+#' tunnel states and to the absorbing (death) state.
+#'
 #' @examples
-#' m_size(5, 2)
+#' specify_m(5, 2)
+#' specify_m(3, 3, pre_tunnel_states = 2)
 #' @export
-m_size <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
+specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
   assertthat::assert_that(
     is.numeric(n_cycles),
     length(n_cycles) == 1,
@@ -95,9 +108,66 @@ m_size <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
     }
   )
 
+  # now m2, which is for the successive tunnel states.
+
+  # the top left column of each tunnel block, with the column index for the
+  # vertical transitions to subsequent tunnel states, plus death
+  tun_topleft <- lapply(seq_along(tun_j), function(i) {
+    tun_j[i:length(tun_j)]
+  })
+
+  # we can cycle through the above to generate the i,j,x for m2:
+  l_m2_ijx <- lapply(
+    X = tun_topleft,
+    FUN = function(tun_start_cols) {
+      if (length(tun_start_cols) == 1) {
+        # This is the death state. coordinates are bottom right element:
+        list(i = dead_rowcol, j = dead_rowcol, x = 1)
+      } else {
+        # this is a tunnel block with n_cycles states. The first set are
+        # superdiagonal (1), whilst the others are veritcally arranged
+
+        # first element's row is also the leftmost column of this tunnel block
+        tun_start_row <- tun_start_cols[1]
+
+        # rows for superdiagonal elements go from that point. cols are +1
+        tun_sdiag_i <- tun_start_row + (seq_len(n_cycles) - 1)
+        tun_sdiag_j <- tun_sdiag_i + 1
+
+        # rest of the transitions are vertically arranged:
+        vertical_strips <- tun_start_cols[-1]
+
+        # row indices are the same as for the superdiagonals:
+        tun_vert_i <- rep(tun_sdiag_i, length(vertical_strips))
+
+        # column indices just repeat element of vertical_strips n_cycles times
+        tun_vert_j <- rep(vertical_strips, each = n_cycles)
+
+        list(
+          i = c(tun_sdiag_i, tun_vert_i),
+          j = c(tun_sdiag_j, tun_vert_j),
+          x = rep(0, length(tun_sdiag_i) + length(tun_vert_i))
+        )
+      }
+    }
+  )
+
+  # collapse m2_ijx list into a single coordinate matrix. one can populate m2
+  # with data simply using m2_ijx[, x] <- transition_probaibilites later on
+  m2_ijx <- matrix(
+    c(
+      lapply(l_m2_ijx, function(x) .subset2(x, "i")) |> unlist(),
+      lapply(l_m2_ijx, function(x) .subset2(x, "j")) |> unlist(),
+      lapply(l_m2_ijx, function(x) .subset2(x, "x")) |> unlist()
+    ),
+    ncol = 3,
+    dimnames = list(NULL, c("i", "j", "x"))
+  )
+
   # return a list of a coordinate matrix for m1, and bounds for m2
   list(
     m1_ijx = m1_ijx,
+    m2_ijx = m2_ijx,
     matrix_size = dead_rowcol
   )
 }

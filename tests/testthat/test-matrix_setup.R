@@ -8,7 +8,7 @@
 test_that("m_size returns correct values", {
   cols <- m_size(n_cycles = 5, n_tunnels = 5)
   expect_type(cols, "list")
-  expect_equal(length(cols), 2)
+  expect_equal(length(cols), 3)
   expect_equal(
     cols$m1_ijx,
     structure(
@@ -27,6 +27,17 @@ test_that("m_size handles minimal valid input", {
     cols$m1_ijx,
     structure(
       c(1, 1, 1, 1, 2, 4, 0, 0, 0),
+      dim = c(3L, 3L),
+      dimnames = list(
+        NULL,
+        c("i", "j", "x")
+      )
+    )
+  )
+  expect_equal(
+    cols$m2_ijx,
+    structure(
+      c(2, 2, 4, 3, 4, 4, 0, 0, 1),
       dim = c(3L, 3L),
       dimnames = list(
         NULL,
@@ -133,7 +144,7 @@ test_that("m_size works for large valid input", {
   expect_equal(cols$matrix_size, 1003)
 })
 
-test_that("m_size errors if arguments are missing", {
-  expect_error(m_size(n_cycles = 2), "argument \"n_tunnels\" is missing")
-  expect_error(m_size(n_tunnels = 2), "argument \"n_cycles\" is missing")
+test_that("specify_m errors if arguments are missing", {
+  expect_error(specify_m(n_cycles = 2), "argument \"n_tunnels\" is missing")
+  expect_error(specify_m(n_tunnels = 2), "argument \"n_cycles\" is missing")
 })
