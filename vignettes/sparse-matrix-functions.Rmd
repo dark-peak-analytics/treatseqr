@@ -38,7 +38,126 @@ When considered together, the two matrices `m1` and `m2` are referred to as `M`.
 
 Visually, this is simply horizontally slicing up `m2` in the obvious places, so there is an `mt` which applies to patients inside of each tunnel. Towards the end, this vignette explores the computational advantages of doing this vs having one `m2` which is defined using sparse matrix functions.
 
-# Determining the size of `M`
+# Specifying `M`
+
+The size of `M` is determined by several things:
+
+- The number of pre-tunnel states, `n_pre`
+- The death state, which is always 1
+- The time horizon, `th`
+- The number of tunnels, `k`
+
+`M` is square, and can be defined using the function `specify_m`:
+
+```{r}
+m_spec <- specify_m(
+  n_cycles = 5,
+  n_tunnels = 3,
+  pre_tunnel_states = 2
+)
+```
+
+Taking a look at the results, we can see that the matrix $\mathbf{M}$ will be `r
+m_spec$matrix_size`x`r m_spec$matrix_size` in dimension. The function also
+provides the coordinates within matrices `m1` and `m2` for all the data points
+that could be needed to populate them, even those that may be zero when it comes
+time to place data in the right places. This allows an efficiency step whereby
+the final coordinate matrix can filter out data points with values equal to
+zero, resulting in increases to the sparsity of the matrix, reducing
+computation.  
+
+But before we get into all that, let's look at what the coordinate matrix looks
+like for `m1`:
+
+```r
+print(m_spec$m1_ijx)
+```
+
+in the above, `i` is row, `j` is column, and `x` is value, which at this stage
+we do not know yet. given that we set `pre_tunnel_states` to `2`, we need to
+populate the top two rows of `M` every model cycle, as these change over time,
+and the transitions are based on time from baseline `t` rather than time within
+tunnel, `d`. By the time we generate a Markov trace, we will have generated a
+`list` object with length equal to the number of model cycles, with one matrix
+for each cycle. In this sense, `m1` takes a familiar approach to time-varying
+Markov modelling in `R` by simply applying the next appropriate matrix to the
+relevant population.  
+
+`m2` is larger and a bit more involved. To explore it, let's take a look at the
+top 20 rows:
+
+```r
+print(m_spec$m2_ijx[1:20,])
+```
+
+There are different parts to this matrix, which correspond to different
+"blocks". As we set `pre_tunnel_states` to `2` in this case, the top left cell
+of the first block is row `3`, column `3`. This block corresponds to the first
+tunnel, and the first superdiagonal (1) elements are in rows `3` to `7`, columns
+`4` to `8`. These represent the probabilities of remaining in the first tunnel,
+given time in the tunnel `d`.  
+
+The probability of staying at the same time within tunnel (`d`) is always zero,
+so the column index `j` is always one higher than the row index `i` for this
+part:
+
+```r
+print(m_spec$m2_ijx[1:5,])
+```
+
+For transitions to subsequent tunnels, these are arranged vertically to
+the right.
+
+The transition from the first tunnel to the second:
+
+```r
+print(m_spec$m2_ijx[6:10,])
+```
+
+First tunnel to third tunnel:
+
+```r
+print(m_spec$m2_ijx[11:15,])
+```
+
+and so on, until we finally get to transitions from the first tunnel to death:
+
+```r
+print(m_spec$m2_ijx[16:20,])
+```
+
+we know it is death because `m_spec$matrix_size` is `r m_spec$matrix_size`, and
+that matches the number in the `j` column of the matrix.  
+
+The next thing to note is that in each tunnel block after the first, the row
+indices increase by `n_cycles`, as do the column indices, but the number of
+"destination" states reduces by one. This is because the implicit assumption in
+this kind of model is that patients cannot return to a previous tunnel. However,
+it is possible to incorporate backwards transitions if desired by adding in
+**horizontally** aligned transition probabilities. this is not currently within
+this package, but it would be possible to add it. Such transitions would
+essentially meet the vertically arranged transitions in `m2` currently, and
+would therefore move patients back to the start of a previous tunnel.  
+
+The number of transition probabilities needed for tunnel 2 in this case is `15`,
+as opposed to `20` for tunnel 1:
+
+```r
+print(m_spec$m2_ijx[21:35,])
+```
+
+Similarly the third and final tunnel has less rows again:
+
+```r
+print(m_spec$m2_ijx[36:45,])
+```
+
+finally, `m2` needs an absorbing death state, which the function helps you
+identify by putting `1` in the x column as it is a priori known:
+
+```r
+print(m_spec$m2_ijx[46,])
+```
 
 
-
+# Populating M
