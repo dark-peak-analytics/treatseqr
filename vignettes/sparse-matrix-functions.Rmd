@@ -161,3 +161,261 @@ print(m_spec$m2_ijx[46,])
 
 
 # Populating M
+
+The next step is to populate `m1_ijx` with the data (i.e., `x` values), as well
+as `m2_ijx`. A function `populate_m` is used to organise the transition
+probability data into the right order, and then put that in the `x` column of
+`m1_ijx` and `m2_ijx`.  
+
+## Validating the transition probability data
+
+The transition probability data should be validated first. This is what
+the function `validate_tp_source` is for. The transition probabilities should be
+organised in quite a sepcific way to work with this package, which the validator
+function will help you to arrive at. If we use the same example dataset we used
+for the vignette `sparse-matrix-extrapolation`, we can validate it and then
+explore what we need to do next:
+
+
+```{r}
+th_cyc <- 50
+
+# some simple time varying transition probabilities. in reality these will come
+# from hazard extrapolations e.g. from `flexsurv`
+tp_source <- list(
+  on_1l = list(
+    off_1l = seq(0.1, 0.05, length.out = th_cyc), # Example: linearly decreasing
+    on_2l = seq(0.05, 0.1, length.out = th_cyc), # Example: linearly increasing
+    off_2l = rep(0, th_cyc),
+    bsc = rep(0, th_cyc),
+    die = rep(0.01, th_cyc)
+  ),
+  off_1l = list(
+    on_2l = seq(0.08, 0.02, length.out = th_cyc),
+    off_2l = seq(0.01, 0.03, length.out = th_cyc),
+    bsc = rep(0.02, th_cyc),
+    die = seq(0.05, 0.1, length.out = th_cyc)
+  ),
+  on_2l = list(
+    off_2l = seq(0.05, 0.02, length.out = th_cyc),
+    bsc = rep(0.01, th_cyc),
+    die = seq(0.1, 0.15, length.out = th_cyc)
+  ),
+  off_2l = list(
+    bsc = seq(0.075, 0.05, length.out = th_cyc),
+    die = seq(0.15, 0.2, length.out = th_cyc)
+  ),
+  bsc = list(
+    die = seq(0.2, 0.3, length.out = th_cyc)
+  )
+)
+```
+
+
+Looking at the `tp` values in a visual way, we can see this:
+
+```{r}
+lobstr::tree(
+  rapply(tp_source, function(x) round(x, 2), how = "list")
+)
+```
+
+
+This has some important features:
+
+1. The first level elements are health states
+2. The first level elements are in order, going from first to last tunnel
+3. Each first level element contains transition probabilities to all other
+   subsequent tunnels, even if zero probability (these can be NULL but must
+exist to use the validator function). This means length goes down by 1 for each
+successive tunnel
+4. element wise sums of everything in each 1st level element (i.e., each health
+   state) are all $\le 1$
+5. the names of the elements all correspond to each other appropriately, no
+   differences or spelling mistakes are allowed!
+
+When we validate against these rules, the function returns us an object that can
+be used to populate `m1` and `m2` (in this case the same as the data going in):
+
+```r
+valid_tp <- validate_tp_source(tp_source = tp_source)
+lobstr::tree(
+  rapply(valid_tp, function(x) round(x, 2), how = "list")
+)
+
+```
+
+
+If instead, we put `NULL` for the empty transitions, the validator fills these
+in:
+
+```{r}
+th_cyc <- 50
+
+# some simple time varying transition probabilities. in reality these will come
+# from hazard extrapolations e.g. from `flexsurv`
+tp_source <- list(
+  on_1l = list(
+    off_1l = seq(0.1, 0.05, length.out = th_cyc), # Example: linearly decreasing
+    on_2l = seq(0.05, 0.1, length.out = th_cyc), # Example: linearly increasing
+    off_2l = NULL,
+    bsc = NULL,
+    die = rep(0.01, th_cyc)
+  ),
+  off_1l = list(
+    on_2l = seq(0.08, 0.02, length.out = th_cyc),
+    off_2l = seq(0.01, 0.03, length.out = th_cyc),
+    bsc = rep(0.02, th_cyc),
+    die = seq(0.05, 0.1, length.out = th_cyc)
+  ),
+  on_2l = list(
+    off_2l = seq(0.05, 0.02, length.out = th_cyc),
+    bsc = rep(0.01, th_cyc),
+    die = seq(0.1, 0.15, length.out = th_cyc)
+  ),
+  off_2l = list(
+    bsc = seq(0.075, 0.05, length.out = th_cyc),
+    die = seq(0.15, 0.2, length.out = th_cyc)
+  ),
+  bsc = list(
+    die = seq(0.2, 0.3, length.out = th_cyc)
+  )
+)
+lobstr::tree(
+  rapply(tp_source, function(x) round(x, 2), how = "list")
+)
+```
+
+
+compared to:
+
+```r
+# Fills in the blanks if they are NULLs
+valid_tp <- validate_tp_source(tp_source = tp_source)
+lobstr::tree(
+  rapply(valid_tp, function(x) round(x, 2), how = "list")
+)
+```
+
+
+However, the function will give you an error if you miss the elements out
+completely. This prevents any kind of corner-cutting when specifying the model
+and ensures that you are very carefully putting things together.
+
+
+## A note on order of operations
+
+The last step before entering the data into `M` is to make sure that
+`valid_tp`, which is valid in and of itself, corresponds to the specification
+of `M`.  
+
+Well, if we reverse the order of operations, we can make the process automatic
+by using `valid_tp` to tell `specify_m` the inputs it needs. These are:
+
+- `n_cycles`
+- `n_tunnels`
+- `pre_tunnel_states`
+
+`n_cycles` can be derived from `valid_tp` because all 2nd level elements have
+the same length. However, the other two inputs `n_tunnels` and
+`pre_tunnel_states` must be determined by the user, as the structure of the data
+is identical whether or not a state is a pre-tunnel. There are the same amount
+of destination states, and the `tp` vectors have the same lengths, names and so
+on.   
+
+Yet, it is still most robust to derive the validated `tp` data first, and then
+specify `M`, because during that, some additional validation of `n_tunnels` and
+`pre_tunnel_states` can be conducted. For instance, in this model framework,
+there must be at least one tunnel, and one pre-tunnel state.
+
+In most oncology settings, only the first state can be a pre-tunnel state
+because the transition from e.g., off-treatment in first line to any subsequent
+state has an index date of discontinuation event for first line therapy, not
+baseline. However, there are feasibly use-cases for multiple pre-tunnel states.
+Yet for this example, we say that only `on_1l` is a pre-tunnel state.
+
+```r
+m_spec <- specify_m(
+  n_cycles = 50,
+  n_tunnels = length(valid_tp) - 1,
+  pre_tunnel_states = 1
+)
+```
+
+## Populating `m1`
+
+The baseline-time transitions will be a list of `r th_cyc` `m1`s in this case, one for
+each cycle. Each of these is a matrix with `1` row and `r m_spec$matrix_size`
+columns.
+
+We can compile this manually if we want, by doing the following. First, pull out
+the probabilities for the health state(s) we need to populate once per cycle:
+
+```r
+p_off_1l <- valid_tp$on_1l$off_1l
+p_on_2l <- valid_tp$on_1l$on_2l
+p_off_2l <- valid_tp$on_1l$off_2l
+p_bsc <- valid_tp$on_1l$bsc
+p_die <- valid_tp$on_1l$die
+m_size <- m_spec$matrix_size
+m1_coord <- m_spec$m1_ijx
+```
+
+Next, have a look at the structure of `m1_ijx` to see where these need to go:
+
+```r
+print(m_spec$m1_ijx)
+```
+
+In this case:
+
+- `1` is staying in `on_1l`
+- `2` is discontinuation to `off_1l`
+- `52` is starting `on_2l`
+- `102` is starting `off_2l`
+- `152` is starting `bsc`
+- `203` is death
+
+Therefore we can easily make our list like this:
+
+```{r}
+m1_list <- lapply(seq_len(th_cyc), function(model_cycle) {
+  m1_coord[, "x"] <- c(
+    1 - sum(
+      p_off_1l[model_cycle],
+      p_on_2l[model_cycle],
+      p_off_2l[model_cycle],
+      p_bsc[model_cycle],
+      p_die[model_cycle]
+    ),
+    p_off_1l[model_cycle],
+    p_on_2l[model_cycle],
+    p_off_2l[model_cycle],
+    p_bsc[model_cycle],
+    p_die[model_cycle]
+  )
+  m1_coord <- m1_coord[m1_coord[, "x"] > 0, , drop = FALSE]
+  Matrix::sparseMatrix(
+    i = m1_coord[, "i"],
+    j = m1_coord[, "j"],
+    x = m1_coord[, "x"],
+    dims = c(1, m_size)
+  )
+})
+```
+
+
+This defines a sparse matrix for each model cycle describing the probabilities
+for transition for that model cycle from the pre-tunnel state(s) to all other
+states in the model. Note the step to remove 0 probabilities before creating the
+sparse matrix. This then removes unnecessary data points and therefore
+computation later on. To check all sum to 1 (which they must given the 1 - sum()
+in the above!):
+
+```r
+all(unlist(lapply(m1_list, sum)) == 1)
+```
+
+Validation steps like these are not necessary because the tps come from
+`valid_tps`, which have already been validated against conditions like
+non-negativity and summing to 1.
