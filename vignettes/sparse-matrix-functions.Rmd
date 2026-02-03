@@ -20,23 +20,72 @@ library(heseqmat)
 
 # Introduction
 
-This vignette runs through the process of setting up and extrapolating a sequencing model allowing patients to "skip over" tunnels (e.g. transition from the first tunnel directly to the 3rd).  
+This vignette runs through the process of setting up and extrapolating a
+sequencing model allowing patients to "skip over" tunnels (e.g. transition from
+the first tunnel directly to the 3rd).  
 
-This is accomplished by creating a sparse transition probability matrix (TPM), populated with transitions in square "blocks" of size equal to the time horizon (`th`), in addition to an extra row and column (or extra rows and columns) on the top left for the initial health state(s) prior to the sequence of tunnels. Visually, this looks like the below:
+This is accomplished by creating a sparse transition probability matrix (TPM),
+populated with transitions in square "blocks" of size equal to the time horizon
+(`th`), in addition to an extra row and column (or extra rows and columns) on
+the top left for the initial health state(s) prior to the sequence of tunnels.
+Visually, this looks like the below:
 
 <img width="653" height="620" alt="image" src="https://github.com/user-attachments/assets/e32b19c8-e425-4a6a-9908-a03b1df4f1c1" />
 
-Each "diagonal" is actually one to the right of the diagonal position inside its block (termed superdiagonal (1)). This means that the probability of staying in the "same state", that is the same time within the same tunnel, is zero, and the probability of remaining in the tunnel is used to move the patient "along" the tunnel by 1. For instance in the first tunnel if there is one pre-tunnel state associated with column 1 and row 1, then cell 2,2 in the matrix would be the probability of patients in the 1st cycle of the first tunnel staying in the first cycle of the first tunnel, which is zero. INSTEAD, the probability of remaining in the first tunnel after one cycle inside is positioned in 2,3, which is the probability of moving from cycle 1 to cycle 2 of the first tunnel.  
+Each "diagonal" is actually one to the right of the diagonal position inside
+its block (termed superdiagonal (1)). This means that the probability of
+staying in the "same state", that is the same time within the same tunnel, is
+zero, and the probability of remaining in the tunnel is used to move the
+patient "along" the tunnel by 1. For instance in the first tunnel if there is
+one pre-tunnel state associated with column 1 and row 1, then cell 2,2 in the
+matrix would be the probability of patients in the 1st cycle of the first
+tunnel staying in the first cycle of the first tunnel, which is zero. INSTEAD,
+the probability of remaining in the first tunnel after one cycle inside is
+positioned in 2,3, which is the probability of moving from cycle 1 to cycle 2
+of the first tunnel.  
 
-Horizontally to the right of the superdiagonal elements are a series of vertically arranged transition probabilities. These are the probabilities of a patient transitioning to the _beginning_ of a subsequent tunnel. For instance, in the first tunnel, the probability of moving from cycle 1 of tunnel 1 to cycle 1 of tunnel 3 would be positioned in row 2, but in the same column as the first row of the 3rd tunnel. During matrix multiplication, those patients then "move" to the beginning of tunnel 3.  
+Horizontally to the right of the superdiagonal elements are a series of
+vertically arranged transition probabilities. These are the probabilities of a
+patient transitioning to the _beginning_ of a subsequent tunnel. For instance,
+in the first tunnel, the probability of moving from cycle 1 of tunnel 1 to
+cycle 1 of tunnel 3 would be positioned in row 2, but in the same column as the
+first row of the 3rd tunnel. During matrix multiplication, those patients then
+"move" to the beginning of tunnel 3.  
 
-If you look closely at the image, you can see that the first row is empty. This is because the transition probabilities for the state(s) prior to entering the sequence of tunnels are time-varying. Therefore, they need to be changed every model cycle. It is computationally inefficient to do this to a large matrix every cycle in `R`, due to its internal workings (it copies the whole matrix upon modification). Therefore, we create a small matrix for the initial state(s), comprising of one (or a few) rows and as many columns as required to cover pre-states, all tunnels and the dead state. This smaller matrix is referred to as `m1` in this package, and the associated function generates a list of them to be used by the engine when extrapolating the sequencing model.  
+If you look closely at the image, you can see that the first row is empty. This
+is because the transition probabilities for the state(s) prior to entering the
+sequence of tunnels are time-varying. Therefore, they need to be changed every
+model cycle. It is computationally inefficient to do this to a large matrix
+every cycle in `R`, due to its internal workings (it copies the whole matrix
+upon modification). Therefore, we create a small matrix for the initial
+state(s), comprising of one (or a few) rows and as many columns as required to
+cover pre-states, all tunnels and the dead state. This smaller matrix is
+referred to as `m1` in this package, and the associated function generates a
+list of them to be used by the engine when extrapolating the sequencing model.  
 
-The remaining set of transitions are for the tunnels and **do not change over time**. This is because all within-tunnel time points, `d`, are actually contained within one large sparse matrix (see the above image), so this only needs to be compiled once. As this contains the empty row(s) associated with the pre-tunnel sequence state(s), it is square. This matrix is referred to as `m2` in this package, and the associated function generates this matrix to be used by the engine when extrapolating the sequencing model.  
+The remaining set of transitions are for the tunnels and **do not change over
+time**. This is because all within-tunnel time points, `d`, are actually
+contained within one large sparse matrix (see the above image), so this only
+needs to be compiled once. As this contains the empty row(s) associated with
+the pre-tunnel sequence state(s), it is square. This matrix is referred to as
+`m2` in this package, and the associated function generates this matrix to be
+used by the engine when extrapolating the sequencing model.  
 
-When considered together, the two matrices `m1` and `m2` are referred to as `M`. A vector of population state residency `p` in `t-1` can be matrix-multiplied by `M` for each model cycle. However, when `M` is broken down into `m1` and `m2`, the operation is still relatively simple. `p1 = p *%* M` is actually equivalent to `p1 = (p[1] %*% m1) + (p %*% m2)`. Similarly, this idea can be further broken down on the tunnel level to allow for more efficient computation. In the one pre-tunnel case for `k` tunnels, appropriate indices `s`, and time horizon `th`, `p1 = (p[1] %*% m1) + (p[s1] %*% mt1) + ... + (p[sk] %*% mtk)`, providing a way to "break down" the matrix multiplication into smaller multiplications.  
+When considered together, the two matrices `m1` and `m2` are referred to as
+`M`. A vector of population state residency `p` in `t-1` can be
+matrix-multiplied by `M` for each model cycle. However, when `M` is broken down
+into `m1` and `m2`, the operation is still relatively simple. `p1 = p *%* M` is
+actually equivalent to `p1 = (p[1] %*% m1) + (p %*% m2)`. Similarly, this idea
+can be further broken down on the tunnel level to allow for more efficient
+computation. In the one pre-tunnel case for `k` tunnels, appropriate indices
+`s`, and time horizon `th`, `p1 = (p[1] %*% m1) + (p[s1] %*% mt1) + ... +
+(p[sk] %*% mtk)`, providing a way to "break down" the matrix multiplication
+into smaller multiplications.  
 
-Visually, this is simply horizontally slicing up `m2` in the obvious places, so there is an `mt` which applies to patients inside of each tunnel. Towards the end, this vignette explores the computational advantages of doing this vs having one `m2` which is defined using sparse matrix functions.
+Visually, this is simply horizontally slicing up `m2` in the obvious places, so
+there is an `mt` which applies to patients inside of each tunnel. Towards the
+end, this vignette explores the computational advantages of doing this vs
+having one `m2` which is defined using sparse matrix functions.
 
 # Specifying `M`
 
@@ -160,7 +209,6 @@ print(m_spec$m2_ijx[46,])
 ```
 
 
-# Populating M
 
 The next step is to populate `m1_ijx` with the data (i.e., `x` values), as well
 as `m2_ijx`. A function `populate_m` is used to organise the transition
@@ -429,4 +477,6 @@ to do the above using the validated `tp` list for `m1` and `m2` all in one easy
 step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
 `m1` being a list of length time horizon, and `m2` being a single sparse matrix.
 
-
+```{r}
+heseqmat::generate_m_list(m_specification = m_spec, transition_prob_list = tp_source)
+```
