@@ -98,7 +98,7 @@ The size of `M` is determined by several things:
 
 `M` is square, and can be defined using the function `specify_m`:
 
-```{r}
+```{r specify_m}
 m_spec <- heseqmat::specify_m(
   n_cycles = 5,
   n_tunnels = 3,
@@ -118,7 +118,7 @@ computation.
 But before we get into all that, let's look at what the coordinate matrix looks
 like for `m1`:
 
-```r
+```{r print_spec}
 print(m_spec$m1_ijx)
 ```
 
@@ -135,8 +135,8 @@ relevant population.
 `m2` is larger and a bit more involved. To explore it, let's take a look at the
 top 20 rows:
 
-```r
-print(m_spec$m2_ijx[1:20,])
+```{r m2_example_first_20}
+print(m_spec$m2_ijx[1:20, ])
 ```
 
 There are different parts to this matrix, which correspond to different
@@ -150,8 +150,8 @@ The probability of staying at the same time within tunnel (`d`) is always zero,
 so the column index `j` is always one higher than the row index `i` for this
 part:
 
-```r
-print(m_spec$m2_ijx[1:5,])
+```{r m2_example_top_5}
+print(m_spec$m2_ijx[1:5, ])
 ```
 
 For transitions to subsequent tunnels, these are arranged vertically to
@@ -159,20 +159,20 @@ the right.
 
 The transition from the first tunnel to the second:
 
-```r
-print(m_spec$m2_ijx[6:10,])
+```{r m2_example_tunnel1_to_2}
+print(m_spec$m2_ijx[6:10, ])
 ```
 
 First tunnel to third tunnel:
 
-```r
-print(m_spec$m2_ijx[11:15,])
+```{r m2_example_tunnel1_to_3}
+print(m_spec$m2_ijx[11:15, ])
 ```
 
 and so on, until we finally get to transitions from the first tunnel to death:
 
-```r
-print(m_spec$m2_ijx[16:20,])
+```{r m2_example_tunnel1_to_death}
+print(m_spec$m2_ijx[16:20, ])
 ```
 
 we know it is death because `m_spec$matrix_size` is `r m_spec$matrix_size`, and
@@ -191,21 +191,21 @@ would therefore move patients back to the start of a previous tunnel.
 The number of transition probabilities needed for tunnel 2 in this case is `15`,
 as opposed to `20` for tunnel 1:
 
-```r
-print(m_spec$m2_ijx[21:35,])
+```{r m2_example_tunnel2}
+print(m_spec$m2_ijx[21:35, ])
 ```
 
 Similarly the third and final tunnel has less rows again:
 
-```r
-print(m_spec$m2_ijx[36:45,])
+```{r m2_example_tunnel3}
+print(m_spec$m2_ijx[36:45, ])
 ```
 
 Finally, `m2` needs an absorbing death state, which the function helps you
 identify by putting `1` in the x column as it is known:
 
-```r
-print(m_spec$m2_ijx[46,])
+```{r m2_example_death}
+print(m_spec$m2_ijx[46, ])
 ```
 
 
@@ -225,7 +225,7 @@ for the vignette `sparse-matrix-extrapolation`, we can validate it and then
 explore what we need to do next:
 
 
-```{r}
+```{r transition_probabilities}
 th_cyc <- 50
 
 # some simple time varying transition probabilities. in reality these will come
@@ -262,7 +262,7 @@ tp_source <- list(
 
 Looking at the `tp` values in a visual way, we can see this:
 
-```{r}
+```{r view_data_tree}
 lobstr::tree(
   rapply(tp_source, function(x) round(x, 2), how = "list")
 )
@@ -285,19 +285,18 @@ successive tunnel
 When we validate against these rules, the function returns us an object that can
 be used to populate `m1` and `m2` (in this case the same as the data going in):
 
-```r
+```{r validate_transition_probabilities}
 valid_tp <- validate_tp_source(tp_source = tp_source)
 lobstr::tree(
   rapply(valid_tp, function(x) round(x, 2), how = "list")
 )
-
 ```
 
 
 If instead, we put `NULL` for the empty transitions, the validator fills these
 in:
 
-```{r}
+```{r transition_probabilities_with_nulls}
 th_cyc <- 50
 
 # some simple time varying transition probabilities. in reality these will come
@@ -337,7 +336,7 @@ lobstr::tree(
 
 compared to:
 
-```{r}
+```{r validate_transition_probabilities_with_nulls}
 # Fills in the blanks if they are NULLs
 valid_tp <- validate_tp_source(tp_source = tp_source)
 lobstr::tree(
@@ -382,7 +381,7 @@ state has an index date of discontinuation event for first line therapy, not
 baseline. However, there are feasibly use-cases for multiple pre-tunnel states.
 Yet for this example, **we say that only `on_1l` is a pre-tunnel state**.
 
-```{r}
+```{r specify_m_from_valid_tp}
 m_spec <- specify_m(
   n_cycles = 50,
   n_tunnels = length(valid_tp) - 1,
@@ -399,7 +398,7 @@ columns.
 We can compile this manually if we want, by doing the following. First, pull out
 the probabilities for the health state(s) we need to populate once per cycle:
 
-```{r}
+```{r derive_m1_data}
 p_off_1l <- valid_tp$on_1l$off_1l
 p_on_2l <- valid_tp$on_1l$on_2l
 p_off_2l <- valid_tp$on_1l$off_2l
@@ -411,7 +410,7 @@ m1_coord <- m_spec$m1_ijx
 
 Next, have a look at the structure of `m1_ijx` to see where these need to go:
 
-```r
+```{r print_m1_ijx}
 print(m_spec$m1_ijx)
 ```
 
@@ -426,7 +425,7 @@ In this case:
 
 Therefore we can easily make our list like this:
 
-```{r}
+```{r manual_m1_list}
 m1_list <- lapply(seq_len(th_cyc), function(model_cycle) {
   m1_coord[, "x"] <- c(
     1 - sum(
@@ -460,7 +459,7 @@ sparse matrix. This then removes unnecessary data points and therefore
 computation later on. To check all sum to 1 (which they must given the 1 - sum()
 in the above!):
 
-```r
+```{r assert_m1_sums}
 assertthat::assert_that(
   all(unlist(lapply(m1_list, sum)) == 1),
   msg = "m1 rows do not sum to 1"
@@ -491,7 +490,7 @@ m <- generate_m_list(
 
 From this point it is very simple to generate a Markov trace!
 
-```{r}
+```{r extrapolate_manual}
 # output population matrix:
 pop <- matrix(0, nrow = m_spec$matrix_size, ncol = th_cyc + 1)
 pop[1, 1] <- 1
@@ -631,9 +630,22 @@ The extrapolation function is trivial, but still useful to have. This function
 extrapolates the model, returning the full trace for you to do with as you
 please:
 
-```{r}
+```{r extrapolate}
 trace <- extrapolate_heseqmat(m = m, spec = m_spec)
 colSums(trace)
 ```
 
+
+### Consolidation
+
+After the trace runs, we need to consolidate the results into useful outputs.
+This usually includes both the vertical and horizontal sums (see above). The
+function `consolidate_heseqmat_trace` does this for you, returning a list
+containing both.
+
+
+```{r consolidate}
+trace <- extrapolate_heseqmat(m = m, spec = m_spec)
+colSums(trace)
+```
 
