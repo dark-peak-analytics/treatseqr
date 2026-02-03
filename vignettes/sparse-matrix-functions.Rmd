@@ -478,5 +478,140 @@ step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
 `m1` being a list of length time horizon, and `m2` being a single sparse matrix.
 
 ```{r}
-heseqmat::generate_m_list(m_specification = m_spec, transition_prob_list = tp_source)
+# validate inputs and generate the full matrix m from one function
+m <- generate_m_list(
+  m_specification = m_spec,
+  transition_prob_list = tp_source
+)
 ```
+
+
+
+# Extrapolation
+
+From this point it is very simple to generate a Markov trace!
+
+```{r}
+# output population matrix:
+pop <- matrix(0, nrow = m_spec$matrix_size, ncol = th_cyc + 1)
+pop[1, 1] <- 1
+
+# get the TPs
+m1 <- m$m1
+m2 <- m$m2
+
+# extrapolate the model:
+for (cyc in seq_len(th_cyc) + 1) {
+  pop[, cyc] <-
+    as.numeric(pop[1, cyc - 1] %*% m1[[cyc - 1]]) +
+    as.numeric(pop[, cyc - 1] %*% m2)
+}
+```
+
+That's it, for the most part. The next step is consolidating information from
+this matrix `pop`, which has some useful properties.
+
+## Properties of `pop`
+
+`pop` is an interesting object because you can add up bits of it to get
+different bits of information. These are really useful for cost-effectiveness
+modelling.
+
+### Overall survival
+
+One minus the last row is overall survival:
+
+```{r plot_os}
+plot(1 - pop[nrow(pop), ],
+  type = "s", xlab = "Cycle", ylab = "Overall Survival",
+  main = "Overall Survival Curve"
+)
+```
+
+### Tunnel populations in absolute time `t`
+
+Vertical sums of sections of `pop` each of height of time horizon, except for
+the pre-tunnel states and death (one row each), are tunnel state populations at
+each absolute time point, `t`, so in cycle 2, we have `colSums(pop[2:51, ])[2]`,
+which is `r colSums(pop[2:51, ])[2]` i.e., `1` (baseline pop) multiplied by the
+probability of discontinuing first-line but not starting second line (`0.1`).  
+
+In English, 0.1 of the cohort is in the first tunnel state in cycle 2.  
+
+Plotting this is easy if you know which rows to add up. In the below we have
+entered the row numbers manually to help you see the blocks for yourselves. Note
+that the time horizon is 50 cycles in this example:
+
+```{r plot_tunnel_pops}
+plot(1 - pop[203, ],
+  type = "l",
+  col = "black",
+  xlab = "Cycle", ylab = "Tunnel 1 Population",
+  main = "Tunnel Populations over Time"
+)
+lines(colSums(pop[2:51, ]), col = "grey80")
+lines(colSums(pop[52:101, ]), type = "s", col = "red")
+lines(colSums(pop[102:151, ]), type = "s", col = "blue")
+lines(colSums(pop[152:202, ]), type = "s", col = "green")
+```
+
+
+### Tunnel populations in relative time `d`
+
+This is where `pop` gets more interesting. The sum _across_ rows is the
+population from the time point of entering the tunnel, or in other words `d = 0`
+for that tunnel. For instance, in the above example, the sum of the 2nd row is
+the proportion of the cohort that moved into tunnel 1 at any time in the model.  
+
+If you take the appropriate set of `rowSum` results and divide it by the
+first element of the result, this will give you a within-tunnel survival (i.e.,
+population starting from 100% remaining inside of the tunnel in question).  
+
+This lets you plot something more familiar, but only if you divide the values by
+their first element. Without that, it looks strange:
+
+```{r plot_d_unadjusted}
+plot(1 - pop[203, ],
+  type = "l",
+  col = "black",
+  xlab = "Cycle", ylab = "Tunnel 1 Population",
+  main = "Tunnel Populations over Time"
+)
+lines(rowSums(pop[2:51, ]), col = "grey80")
+lines(rowSums(pop[52:101, ]), type = "s", col = "red")
+lines(rowSums(pop[102:151, ]), type = "s", col = "blue")
+lines(rowSums(pop[152:202, ]), type = "s", col = "green")
+```
+
+But if you adjust it for the proportion of the initial cohort that ever entered
+each tunnel, you get something more familiar:
+
+```{r plot_d_adjusted}
+plot(1 - pop[203, ],
+  type = "l",
+  col = "black",
+  xlab = "Cycle", ylab = "Tunnel 1 Population",
+  main = "Tunnel Populations over Time"
+)
+lines(rowSums(pop[2:51, ]) / sum(pop[2, ]), col = "grey80")
+lines(rowSums(pop[52:101, ]) / sum(pop[52, ]), type = "s", col = "red")
+lines(rowSums(pop[102:151, ]) / sum(pop[102, ]), type = "s", col = "blue")
+lines(rowSums(pop[152:202, ]) / sum(pop[152, ]), type = "s", col = "green")
+```
+
+This is the **within-tunnel survival curve** for each tunnel, which is much more
+intuitive, and is more likely to be comparable to some external data for
+external validation purposes.  
+
+However, one warning here is that the source Kaplan-Meier used to inform the
+transition probabilities for these tunnel states **will not align** with these
+curves. This is because the appropriate endpoint for informing the transition
+probabilities needs to have carefully designed censoring rules to isolate the
+hazard of a specific transition. Therefore, these curves, which also include
+exiting the state for _any_ reason (not just one specific event) should be
+compared to Kaplan-Meier which does not e.g., censor for death.  
+
+As long as you carefully think about what data these lines should be compared
+to first, you can use these survival at time `d` for each tunnel plots to
+internally or even externally validate your model's extrapolation of clinical
+outcomes.
