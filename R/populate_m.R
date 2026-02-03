@@ -36,10 +36,18 @@
 #' @importFrom assertthat assert_that
 #' @export
 #'
-generate_m_list <- function(m_specification, transition_prob_list) {
+generate_m_list <- function(
+  m_specification,
+  transition_prob_list,
+  first_state_name = "initial"
+) {
   # validate the transition probability source list.
   # This will return a valid list or an error.
   valid_tp <- validate_tp_source(transition_prob_list)
+  state_names <- rapply(valid_tp, function(x) 1, how = "list")[[1]] |>
+    unlist() |>
+    names()
+  state_names <- c(first_state_name, state_names)
 
   # some useful variables to use throughout the funciton
   th <- m_specification$n_cycles
@@ -117,6 +125,7 @@ generate_m_list <- function(m_specification, transition_prob_list) {
 
   list(
     m1 = m1_list,
-    m2 = sm_m2
+    m2 = sm_m2,
+    state_names = state_names
   )
 }

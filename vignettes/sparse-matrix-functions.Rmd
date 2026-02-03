@@ -643,9 +643,26 @@ This usually includes both the vertical and horizontal sums (see above). The
 function `consolidate_heseqmat_trace` does this for you, returning a list
 containing both.
 
+Interestingly, the bounds of the states within `trace` always correspond to the
+numbers in `m1_ijx` in the `j` column, which simplifies the process of adding
+things up nicely. We just use a simple algorithm leveraging information stored
+in `m_spec` to figure out which pairings of values in `m1_ijx[, "j"]` correspond
+to which state:
+
+- `pre_tunnels`: The first `pre_tunnels` rows in `trace` are 1 row/column each
+and these are states which have a basis in time of `t` not `d`, so are simply
+the appropriate row (e.g., `trace[1, ]` is the first health state over time).
+- Tunnels: Each tunnel has `n_cycles` rows/columns, and these can be summed to
+produce what we need. Note that we can do horizontal and vertical sums here -
+the bounds are just the transpose of each other.
+- Death: The last row/column is death, which is absorbing.
+
 
 ```{r consolidate}
-trace <- extrapolate_heseqmat(m = m, spec = m_spec)
+trace <- consolidate_heseqmat_trace(
+  full_trace = trace, spec = m_spec,
+  state_names = m$state_names
+)
 colSums(trace)
 ```
 
