@@ -34,6 +34,7 @@
 #'
 #' @importFrom Matrix sparseMatrix rowSums
 #' @importFrom assertthat assert_that
+#' @export
 #'
 generate_m_list <- function(m_specification, transition_prob_list) {
   # validate the transition probability source list.

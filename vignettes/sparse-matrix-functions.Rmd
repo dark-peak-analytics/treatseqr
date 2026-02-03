@@ -2,7 +2,7 @@
 title: "Sparse Matrix Extrapolation using `heseqmat`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Sparse Matrix Extrapolation}
+  %\VignetteIndexEntry{Sparse Matrix Extrapolation using heseqmat}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -337,7 +337,7 @@ lobstr::tree(
 
 compared to:
 
-```r
+```{r}
 # Fills in the blanks if they are NULLs
 valid_tp <- validate_tp_source(tp_source = tp_source)
 lobstr::tree(
@@ -382,7 +382,7 @@ state has an index date of discontinuation event for first line therapy, not
 baseline. However, there are feasibly use-cases for multiple pre-tunnel states.
 Yet for this example, **we say that only `on_1l` is a pre-tunnel state**.
 
-```r
+```{r}
 m_spec <- specify_m(
   n_cycles = 50,
   n_tunnels = length(valid_tp) - 1,
@@ -399,7 +399,7 @@ columns.
 We can compile this manually if we want, by doing the following. First, pull out
 the probabilities for the health state(s) we need to populate once per cycle:
 
-```r
+```{r}
 p_off_1l <- valid_tp$on_1l$off_1l
 p_on_2l <- valid_tp$on_1l$on_2l
 p_off_2l <- valid_tp$on_1l$off_2l
@@ -477,7 +477,7 @@ to do the above using the validated `tp` list for `m1` and `m2` all in one easy
 step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
 `m1` being a list of length time horizon, and `m2` being a single sparse matrix.
 
-```{r}
+```{r generate_m_list}
 # validate inputs and generate the full matrix m from one function
 m <- generate_m_list(
   m_specification = m_spec,
@@ -635,4 +635,5 @@ please:
 trace <- extrapolate_heseqmat(m = m, spec = m_spec)
 colSums(trace)
 ```
+
 
