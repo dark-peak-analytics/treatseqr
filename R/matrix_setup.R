@@ -168,6 +168,8 @@ specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
   list(
     m1_ijx = m1_ijx,
     m2_ijx = m2_ijx,
-    matrix_size = dead_rowcol
+    matrix_size = dead_rowcol,
+    n_cycles = n_cycles,
+    pre_tunnels = pre_tunnel_states
   )
 }
