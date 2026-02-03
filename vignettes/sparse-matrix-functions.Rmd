@@ -624,3 +624,15 @@ interpreting it then requires manual steps to add things up in ways that
 typically will always be needed for cost-effectiveness modelling in health
 economics. Yet, individual preferences will always be a factor, so we have
 broken down the steps into separate simple functions to do this for you.
+
+### Extrapolation
+
+The extrapolation function is trivial, but still useful to have. This function
+extrapolates the model, returning the full trace for you to do with as you
+please:
+
+```{r}
+trace <- extrapolate_heseqmat(m = m, spec = m_spec)
+colSums(trace)
+```
+
