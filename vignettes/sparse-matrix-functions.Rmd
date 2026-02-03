@@ -660,7 +660,8 @@ the bounds are just the transpose of each other.
 
 ```{r consolidate}
 trace <- consolidate_heseqmat_trace(
-  full_trace = trace, spec = m_spec,
+  full_trace = trace,
+  spec = m_spec,
   state_names = m$state_names
 )
 colSums(trace)

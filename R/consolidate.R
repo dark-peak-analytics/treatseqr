@@ -24,10 +24,7 @@
 #' - The dead block is taken as the last row of the trace.
 #' - The function is useful for cost-effectiveness modeling where tunnel states are present.
 #'
-#' @examples
 #' @export
-#'
-#' # Not run: consolidate_heseqmat_trace(full_trace, spec, state_names)
 consolidate_heseqmat_trace <- function(full_trace, spec, state_names) {
   pre_tun <- spec$pre_tunnels
   bounds <- spec$m1_ijx[, "j"]

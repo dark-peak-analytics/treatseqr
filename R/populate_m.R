@@ -119,7 +119,7 @@ generate_m_list <- function(
 
   # quick assert check:
   assertthat::assert_that(
-    all(abs(Matrix::rowSums(sm_m2[2:nrow(sm_m2), ]) - 1) < 1e-10),
+    all(abs(Matrix::rowSums(sm_m2[(pre_tun_states + 1):nrow(sm_m2), ]) - 1) < 1e-10),
     msg = "Row sums of m2 do not equal 1 after populating transition probabilities"
   )
 

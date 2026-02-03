@@ -6,7 +6,11 @@
 transition probabilities which the functions in \code{validate_tp.R} produce to
 generate the sparce matrices required to extrapolate the sequencing model}
 \usage{
-generate_m_list(m_specification, transition_prob_list)
+generate_m_list(
+  m_specification,
+  transition_prob_list,
+  first_state_name = "initial"
+)
 }
 \arguments{
 \item{m_specification}{A list containing model parameters, including:

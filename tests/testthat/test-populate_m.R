@@ -17,7 +17,7 @@ test_that("generate_m_list returns correct structure and dimensions", {
   result <- generate_m_list(m_spec, tp_list)
 
   expect_type(result, "list")
-  expect_named(result, c("m1", "m2"))
+  expect_named(result, c("m1", "m2", "state_names"))
   expect_true(is.list(result$m1))
   expect_true(methods::is(result$m2, "sparseMatrix"))
   expect_length(result$m1, m_spec$n_cycles)
