@@ -523,7 +523,7 @@ One minus the last row is overall survival:
 
 ```{r plot_os}
 plot(1 - pop[nrow(pop), ],
-  type = "s", xlab = "Cycle", ylab = "Overall Survival",
+  type = "l", xlab = "Cycle", ylab = "Overall Survival",
   main = "Overall Survival Curve"
 )
 ```
@@ -549,10 +549,10 @@ plot(1 - pop[203, ],
   xlab = "Cycle", ylab = "Tunnel 1 Population",
   main = "Tunnel Populations over Time"
 )
-lines(colSums(pop[2:51, ]), col = "grey80")
-lines(colSums(pop[52:101, ]), type = "s", col = "red")
-lines(colSums(pop[102:151, ]), type = "s", col = "blue")
-lines(colSums(pop[152:202, ]), type = "s", col = "green")
+lines(colSums(pop[2:51, ]), type = "l", col = "grey80")
+lines(colSums(pop[52:101, ]), type = "l", col = "red")
+lines(colSums(pop[102:151, ]), type = "l", col = "blue")
+lines(colSums(pop[152:202, ]), type = "l", col = "green")
 ```
 
 
@@ -577,10 +577,10 @@ plot(1 - pop[203, ],
   xlab = "Cycle", ylab = "Tunnel 1 Population",
   main = "Tunnel Populations over Time"
 )
-lines(rowSums(pop[2:51, ]), col = "grey80")
-lines(rowSums(pop[52:101, ]), type = "s", col = "red")
-lines(rowSums(pop[102:151, ]), type = "s", col = "blue")
-lines(rowSums(pop[152:202, ]), type = "s", col = "green")
+lines(rowSums(pop[2:51, ]), type = "l", col = "grey80")
+lines(rowSums(pop[52:101, ]), type = "l", col = "red")
+lines(rowSums(pop[102:151, ]), type = "l", col = "blue")
+lines(rowSums(pop[152:202, ]), type = "l", col = "green")
 ```
 
 But if you adjust it for the proportion of the initial cohort that ever entered
@@ -593,10 +593,10 @@ plot(1 - pop[203, ],
   xlab = "Cycle", ylab = "Tunnel 1 Population",
   main = "Tunnel Populations over Time"
 )
-lines(rowSums(pop[2:51, ]) / sum(pop[2, ]), col = "grey80")
-lines(rowSums(pop[52:101, ]) / sum(pop[52, ]), type = "s", col = "red")
-lines(rowSums(pop[102:151, ]) / sum(pop[102, ]), type = "s", col = "blue")
-lines(rowSums(pop[152:202, ]) / sum(pop[152, ]), type = "s", col = "green")
+lines(rowSums(pop[2:51, ]) / sum(pop[2, ]), type = "l", col = "grey80")
+lines(rowSums(pop[52:101, ]) / sum(pop[52, ]), type = "l", col = "red")
+lines(rowSums(pop[102:151, ]) / sum(pop[102, ]), type = "l", col = "blue")
+lines(rowSums(pop[152:202, ]) / sum(pop[152, ]), type = "l", col = "green")
 ```
 
 This is the **within-tunnel survival curve** for each tunnel, which is much more
@@ -615,3 +615,12 @@ As long as you carefully think about what data these lines should be compared
 to first, you can use these survival at time `d` for each tunnel plots to
 internally or even externally validate your model's extrapolation of clinical
 outcomes.
+
+
+## Functions to generate outputs
+
+The full matrix is the most useful object to return for `pop`. However,
+interpreting it then requires manual steps to add things up in ways that
+typically will always be needed for cost-effectiveness modelling in health
+economics. Yet, individual preferences will always be a factor, so we have
+broken down the steps into separate simple functions to do this for you.
