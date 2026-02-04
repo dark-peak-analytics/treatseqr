@@ -12,6 +12,7 @@ Suggests:
     data.table,
     ggplot2,
     knitr,
+    lobstr,
     patchwork,
     rmarkdown,
     scales,
@@ -20,3 +21,4 @@ Config/testthat/edition: 3
 Imports: 
     assertthat,
     Matrix
+VignetteBuilder: knitr

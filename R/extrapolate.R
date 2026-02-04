@@ -1,3 +1,21 @@
+#' Extrapolate Health Economic Sequence Model
+#'
+#' This function extrapolates a health economic sequence model using sparse
+#' matrices. It generates a population trace matrix showing state occupancy
+#' over time.
+#'
+#' @param m A list containing the transition matrices:
+#'   - m1: A list of sparse matrices (one per cycle) for pre-tunnel states.
+#'   - m2: A sparse matrix for tunnel states.
+#' @param spec A model specification list containing:
+#'   - n_cycles: Number of model cycles.
+#'   - matrix_size: Size of the transition matrix.
+#'
+#' @return A matrix where rows represent states and columns represent time
+#'   points (cycles). The matrix shows the proportion of the cohort in each
+#'   state at each time point.
+#'
+#' @export
 extrapolate_heseqmat <- function(m, spec) {
   # output population matrix:
   th <- spec$n_cycles
