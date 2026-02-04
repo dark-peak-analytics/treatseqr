@@ -664,6 +664,33 @@ trace <- consolidate_heseqmat_trace(
   spec = m_spec,
   state_names = m$state_names
 )
-colSums(trace)
+
+# expected time in state in model cycles:
+colSums(trace$t)
 ```
 
+These can be used for easy plotting, using `matplot` from `base`.
+
+```{r matplot_t}
+graphics::matplot(trace$t, type = "l")
+graphics::legend(
+  "topright",
+  legend = colnames(trace$t),
+  col = seq_len(ncol(trace$t)),
+  lty = 1
+)
+```
+
+
+
+Similarly, we can look at the proportional survival in time in state `d`.
+
+```{r matplot_d}
+graphics::matplot(trace$d, type = "l")
+graphics::legend(
+  "topright",
+  legend = colnames(trace$d),
+  col = seq_len(ncol(trace$d)),
+  lty = 1
+)
+`
