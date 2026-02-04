@@ -1,0 +1,24 @@
+Package: heseqmat
+Title: Health Economics Sequence Modelling with Sparse Matrices
+Version: 0.0.0.9000
+Authors@R: 
+    person("Darren", "Burns", , "dburns@darkpeakanalytics.com", role = c("aut", "cre"))
+Description: Tools for health economics sequence modelling using sparse matrices, optimized for performance and memory efficiency.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Suggests: 
+    data.table,
+    ggplot2,
+    knitr,
+    lobstr,
+    patchwork,
+    rmarkdown,
+    scales,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Imports: 
+    assertthat,
+    Matrix
+VignetteBuilder: knitr
