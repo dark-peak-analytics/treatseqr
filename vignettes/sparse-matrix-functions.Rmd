@@ -693,4 +693,4 @@ graphics::legend(
   col = seq_len(ncol(trace$d)),
   lty = 1
 )
-`
+```
