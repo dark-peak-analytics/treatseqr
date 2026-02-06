@@ -1,0 +1,207 @@
+---
+title: "What if it's all tunnels?"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{What if it's all tunnels?}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(Matrix)
+library(heseqmat)
+library(microbenchmark)
+```
+
+We wonder whether it might be more efficient to use tunnel states for *all*
+time-dependency in the model. This is the case if it is impossible to return to
+the initial state and there is no other need to depend on wall time. There will
+likely be examples where this assumption is unreasonable, e.g., because wall
+time is a measure of *age*, which is frequently a predictor of mortality.
+
+We will use a familiar example:
+
+```{r define_example}
+th_cyc <- 50
+
+# some simple time varying transition probabilities. in reality these will come
+# from hazard extrapolations e.g. from `flexsurv`
+valid_tp <- list(
+  on_1l = list(
+    off_1l = seq(0.1, 0.05, length.out = th_cyc), # Example: linearly decreasing
+    on_2l = seq(0.05, 0.1, length.out = th_cyc), # Example: linearly increasing
+    off_2l = rep(0, th_cyc),
+    bsc = rep(0, th_cyc),
+    die = rep(0.01, th_cyc)
+  ),
+  off_1l = list(
+    on_2l = seq(0.08, 0.02, length.out = th_cyc),
+    off_2l = seq(0.01, 0.03, length.out = th_cyc),
+    bsc = rep(0.02, th_cyc),
+    die = seq(0.05, 0.1, length.out = th_cyc)
+  ),
+  on_2l = list(
+    off_2l = seq(0.05, 0.02, length.out = th_cyc),
+    bsc = rep(0.01, th_cyc),
+    die = seq(0.1, 0.15, length.out = th_cyc)
+  ),
+  off_2l = list(
+    bsc = seq(0.075, 0.05, length.out = th_cyc),
+    die = seq(0.15, 0.2, length.out = th_cyc)
+  ),
+  bsc = list(
+    die = seq(0.2, 0.3, length.out = th_cyc)
+  )
+) |>
+  validate_tp_source()
+
+m_spec <- specify_m(
+  n_cycles = th_cyc,
+  n_tunnels = length(valid_tp) - 1,
+  pre_tunnel_states = 1
+)
+
+# validate inputs and generate the full matrix m from one function
+m <- generate_m_list(
+  m_specification = m_spec,
+  transition_prob_list = valid_tp
+)
+```
+
+Benchmark the existing approach:
+
+```{r benchmark-existing}
+microbenchmark(extrapolate_heseqmat(m = m, spec = m_spec), times = 1000)
+```
+
+Now let's try only using tunnel states
+
+```{r setup-only-tunnel-states}
+tunnel_starts <- 1L + th_cyc * 0:(length(valid_tp) - 1)
+death_state <- th_cyc * length(valid_tp) + 1
+ii <- c(
+  (tunnel_starts[1]):(tunnel_starts[2]-1L), # on_1L -> on_1L
+  (tunnel_starts[1]):(tunnel_starts[2]-1L), # on_1L -> off_1L
+  (tunnel_starts[1]):(tunnel_starts[2]-1L), # on_1L -> on_2L
+  (tunnel_starts[1]):(tunnel_starts[2]-1L), # on_1L -> off_2L
+  (tunnel_starts[1]):(tunnel_starts[2]-1L), # on_1L -> bsc
+  (tunnel_starts[1]):(tunnel_starts[2]-1L), # on_1L -> die
+  (tunnel_starts[2]):(tunnel_starts[3]-1L), # off_1L -> off_1L
+  (tunnel_starts[2]):(tunnel_starts[3]-1L), # off_1L -> on_2L
+  (tunnel_starts[2]):(tunnel_starts[3]-1L), # off_1L -> off_2L
+  (tunnel_starts[2]):(tunnel_starts[3]-1L), # off_1L -> bsc
+  (tunnel_starts[2]):(tunnel_starts[3]-1L), # off_1L -> die
+  (tunnel_starts[3]):(tunnel_starts[4]-1L), # on_2L -> on_2L
+  (tunnel_starts[3]):(tunnel_starts[4]-1L), # on_2L -> off_2L
+  (tunnel_starts[3]):(tunnel_starts[4]-1L), # on_2L -> bsc
+  (tunnel_starts[3]):(tunnel_starts[4]-1L), # on_2L -> die
+  (tunnel_starts[4]):(tunnel_starts[5]-1L), # off_2L -> off_2L
+  (tunnel_starts[4]):(tunnel_starts[5]-1L), # off_2L -> bsc
+  (tunnel_starts[4]):(tunnel_starts[5]-1L), # off_2L -> die
+  (tunnel_starts[5]):(death_state-1L),      # bsc -> bsc
+  (tunnel_starts[5]):(death_state-1L),      # bsc -> die
+  death_state                               # die -> die
+)
+jj <- c(
+  (tunnel_starts[1]+1L):(tunnel_starts[2]-1L), tunnel_starts[2]-1L, # on_1L -> on_1L
+  rep(tunnel_starts[2], th_cyc),                                    # on_1L -> off_1L
+  rep(tunnel_starts[3], th_cyc),                                    # on_1L -> on_2L
+  rep(tunnel_starts[4], th_cyc),                                    # on_1L -> off_2L
+  rep(tunnel_starts[5], th_cyc),                                    # on_1L -> bsc
+  rep(death_state, th_cyc),                                         # on_1L -> die
+  (tunnel_starts[2]+1L):(tunnel_starts[3]-1L), tunnel_starts[3]-1L, # off_1L -> off_1L
+  rep(tunnel_starts[3], th_cyc),                                    # off_1L -> on_2L
+  rep(tunnel_starts[4], th_cyc),                                    # off_1L -> off_2L
+  rep(tunnel_starts[5], th_cyc),                                    # off_1L -> bsc
+  rep(death_state, th_cyc),                                         # off_1L -> die
+  (tunnel_starts[3]+1L):(tunnel_starts[4]-1L), tunnel_starts[4]-1L, # on_2L -> on_2L
+  rep(tunnel_starts[4], th_cyc),                                    # on_2L -> off_2L
+  rep(tunnel_starts[5], th_cyc),                                    # on_2L -> bsc
+  rep(death_state, th_cyc),                                         # on_2L -> die
+  (tunnel_starts[4]+1L):(tunnel_starts[5]-1L), tunnel_starts[5]-1L, # off_2L -> off_2L
+  rep(tunnel_starts[5], th_cyc),                                    # off_2L -> bsc
+  rep(death_state, th_cyc),                                         # off_2L -> die
+  (tunnel_starts[5]+1L):(death_state-1L), death_state-1L,           # bsc -> bsc
+  rep(death_state, th_cyc),                                         # bsc -> die
+  death_state                                                       # die -> die
+)
+xx <- c(
+  1 - Reduce(`+`, valid_tp$on_1l),  # on_1L -> on_1L
+  valid_tp$on_1l$off_1l,            # on_1L -> off_1L
+  valid_tp$on_1l$on_2l,             # on_1L -> on_2L
+  valid_tp$on_1l$off_2l,            # on_1L -> off_2L
+  valid_tp$on_1l$bsc,               # on_1L -> bsc
+  valid_tp$on_1l$die,               # on_1L -> die
+  1 - Reduce(`+`, valid_tp$off_1l), # off_1L -> off_1L
+  valid_tp$off_1l$on_2l,            # off_1L -> on_2L
+  valid_tp$off_1l$off_2l,           # off_1L -> off_2L
+  valid_tp$off_1l$bsc,              # off_1L -> bsc
+  valid_tp$off_1l$die,              # off_1L -> die
+  1 - Reduce(`+`, valid_tp$on_2l),  # on_2L -> on_2L
+  valid_tp$on_2l$off_2l,            # on_2L -> off_2L
+  valid_tp$on_2l$bsc,               # on_2L -> bsc
+  valid_tp$on_2l$die,               # on_2L -> die
+  1 - Reduce(`+`, valid_tp$off_2l), # off_2L -> on_2L
+  valid_tp$off_2l$bsc,              # off_2L -> bsc
+  valid_tp$off_2l$die,              # off_2L -> die
+  1 - valid_tp$bsc$die,             # bsc -> bsc
+  valid_tp$bsc$die,                 # bsc -> die
+  1                                 # die -> die
+)
+m_all_tunnels <- Matrix::sparseMatrix(
+  i = ii, j = jj, x = xx, dims = rep(death_state, 2)
+)
+```
+
+```{r benchmark-only-tunnel-states}
+extrapolate_all_tunnels <- function(m_all_tunnels) {
+  pop <- matrix(0, nrow = death_state, ncol = th_cyc + 1)
+  pop[1,1] <- 1
+  for (cyc in seq_len(th_cyc) + 1)
+    pop[,cyc] <- as.numeric(pop[,cyc-1] %*% m_all_tunnels)
+  pop
+}
+microbenchmark(extrapolate_all_tunnels(m_all_tunnels), times = 1000)
+```
+
+And let's check they actually give the same results...
+
+```{r check-equal}
+
+trace_existing <- extrapolate_heseqmat(m, m_spec)
+trace_all_tunnels <- extrapolate_all_tunnels(m_all_tunnels)
+
+sumtrace_existing <- rbind(
+  trace_existing[1,],
+  colSums(trace_existing[2:51,]),
+  colSums(trace_existing[52:101,]),
+  colSums(trace_existing[102:151,]),
+  colSums(trace_existing[152:202,]),
+  trace_existing[203,]
+)
+
+sumtrace_all_tunnels <- rbind(
+  colSums(trace_all_tunnels[1:50,]),
+  colSums(trace_all_tunnels[51:100,]),
+  colSums(trace_all_tunnels[101:150,]),
+  colSums(trace_all_tunnels[151:200,]),
+  colSums(trace_all_tunnels[201:250,]),
+  trace_all_tunnels[251,]
+)
+
+max(abs(sumtrace_existing - sumtrace_all_tunnels))
+
+```
+
+They are giving the same result, except for numerical precision.
+
+So we should consider relaxing the condition in `specify_m()` that
+`pre_tunnel_states > 0`, and allow it to produce an empty `m1`, and optimise
+accordingly when this is found.
