@@ -8,6 +8,8 @@
 #' @param n_tunnels Integer. Number of tunnel state blocks (must be > 0).
 #' @param pre_tunnel_states Integer. Number of pre-tunnel states before entering
 #' the first tunnel (default is 1, must be between 1 and 10).
+#' @param tunnel_lengths the lengths of the individual tunnels. If left blank
+#' the function assumes that all the tunnels are `n_cycles` in length
 #'
 #' @return A list with:
 #'   \describe{
@@ -29,7 +31,12 @@
 #' specify_m(5, 2)
 #' specify_m(3, 3, pre_tunnel_states = 2)
 #' @export
-specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
+specify_m <- function(
+  n_cycles,
+  n_tunnels,
+  tunnel_lengths = NULL,
+  pre_tunnel_states = 1
+) {
   assertthat::assert_that(
     is.numeric(n_cycles),
     length(n_cycles) == 1,
@@ -66,16 +73,25 @@ specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
   n_dest_last_non_tunnel <- n_dest_first - pre_tunnel_states + 1
   n_dest <- n_dest_first:n_dest_last_non_tunnel
 
-  # indices for the top left of each tunnel block are the same for all
-  # pre-tunnel states, so work them out just once:
-  tunnel_starts <- seq(
-    from = tun_start[2],
-    to = tun_start[2] + (n_tunnels - 1) * n_cycles,
-    by = n_cycles
-  )
-
-  # add one row/column at the extreme right and bottom for the dead state:
-  dead_rowcol <- max(tunnel_starts) + n_cycles + 1
+  if (!is.null(tunnel_lengths)) {
+    # if variable tunnel lengths, use the lengths provided
+    tunnel_starts <- cumsum(tunnel_lengths) + tun_start[1]
+    dead_rowcol <- sum(
+      max(tunnel_starts),
+      tunnel_lengths[length(tunnel_lengths)],
+      1
+    )
+  } else {
+    # indices for the top left of each tunnel block are the same for all
+    # pre-tunnel states, so work them out just once:
+    tunnel_starts <- seq(
+      from = tun_start[2],
+      to = tun_start[2] + (n_tunnels - 1) * n_cycles,
+      by = n_cycles
+    )
+    # add one row/column at the extreme right and bottom for the dead state:
+    dead_rowcol <- max(tunnel_starts) + n_cycles + 1
+  }
 
   tun_j <- c(tunnel_starts, dead_rowcol)
 
