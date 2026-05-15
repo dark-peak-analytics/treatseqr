@@ -484,6 +484,12 @@ m <- generate_m_list(
 )
 ```
 
+Note that this function automatically filters out probabilities entered as zero.
+This then avoids unnecessary computation when running extrapolations, which
+become more important in e.g., probabilistic settings. When running a
+probabilistic sensitivity analysis, one would need to generate `tp_source` `n`
+times, where `n` is the number of iterations, and then generate `m` for each
+iteration. Therefore, the efficiency of this step is important to consider.
 
 
 # Extrapolation

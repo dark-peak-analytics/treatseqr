@@ -32,7 +32,11 @@
 #' The function validates the transition probability list, splits it into
 #' pre-tunnel and tunnel components, and constructs the corresponding sparse
 #' matrices. It ensures that row sums are appropriate and asserts that the
-#' tunnel matrix rows sum to 1.
+#' tunnel matrix rows sum to 1. Note that it filters out zero probabilities
+#' before entering them into the sparse matrices. This avoids those values being
+#' put into the matrix and then used in the matrix multiplications, which would
+#' ultimately always result in values of 0 being propagated. This then has a
+#' computational gain for no cost.
 #'
 #' @importFrom Matrix sparseMatrix rowSums
 #' @importFrom assertthat assert_that
@@ -86,12 +90,14 @@ generate_m_list <- function(
       c(tp_stay, tp_move)
     })
 
+    # note that this filters out zero probabilities first to avoid wasting
+    # memory and ultimately computational effort doing 0*0 many times
     coord[, "x"] <- unlist(x_values)
-    coord
+    coord_nz <- coord[coord[, "x"] != 0, , drop = FALSE]
     Matrix::sparseMatrix(
-      i = coord[, "i"],
-      j = coord[, "j"],
-      x = coord[, "x"],
+      i = coord_nz[, "i"],
+      j = coord_nz[, "j"],
+      x = coord_nz[, "x"],
       dims = c(pre_tun_states, matrix_size)
     )
   })
@@ -111,16 +117,20 @@ generate_m_list <- function(
 
   m2_ijx[seq_len(nrow(m2_ijx) - 1), "x"] <- x_m2
 
+  m2_ijx_nz <- m2_ijx[m2_ijx[, "x"] != 0, , drop = FALSE]
   sm_m2 <- Matrix::sparseMatrix(
-    i = m2_ijx[, "i"],
-    j = m2_ijx[, "j"],
-    x = m2_ijx[, "x"],
+    i = m2_ijx_nz[, "i"],
+    j = m2_ijx_nz[, "j"],
+    x = m2_ijx_nz[, "x"],
     dims = c(matrix_size, matrix_size)
   )
 
   # quick assert check:
   assertthat::assert_that(
-    all(abs(Matrix::rowSums(sm_m2[(pre_tun_states + 1):nrow(sm_m2), ]) - 1) < 1e-10),
+    all(
+      abs(Matrix::rowSums(sm_m2[(pre_tun_states + 1):nrow(sm_m2), ]) - 1) <
+        1e-10
+    ),
     msg = "Row sums of m2 do not equal 1 after populating transition probabilities"
   )
 
