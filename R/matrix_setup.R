@@ -29,20 +29,12 @@
 #' specify_m(5, 2)
 #' specify_m(3, 3, pre_tunnel_states = 2)
 #' @export
-specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
+specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
   assertthat::assert_that(
-    is.numeric(n_cycles),
-    length(n_cycles) == 1,
-    n_cycles > 0,
-    n_cycles == as.integer(n_cycles),
-    msg = "n_cycles must be a single positive integer"
-  )
-  assertthat::assert_that(
-    is.numeric(n_tunnels),
-    length(n_tunnels) == 1,
-    n_tunnels > 0,
-    n_tunnels == as.integer(n_tunnels),
-    msg = "n_tunnels must be a single positive integer"
+    is.numeric(tunnel_lengths),
+    length(tunnel_lengths) >= 1,
+    all(tunnel_lengths == as.integer(tunnel_lengths)),
+    msg = "tunnel_lengths must be a vector of positive integers"
   )
   assertthat::assert_that(
     length(pre_tunnel_states) == 1,
@@ -53,29 +45,25 @@ specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
     msg = "'pre_tunnel_states' must be a single positive integer. Limit of 10"
   )
 
+  # tunnel lengths shows us how many tunnels:
+  n_tunnels <- length(tunnel_lengths)
+
   # pre-tunnel row/column indices. These are diagonal elements as probability of
   # staying in pre-tunnel states:
   pt_i <- seq_len(pre_tunnel_states)
-
-  # starting indices for first tunnel's top left element. remember that this
-  # element is empty as probability of stayin in tunnel is superdiagonal (1)
-  tun_start <- c(pre_tunnel_states + 1, pre_tunnel_states + 1)
 
   # number of destinations from the first health state (pre-tunnel)
   n_dest_first <- n_tunnels + pre_tunnel_states + 1
   n_dest_last_non_tunnel <- n_dest_first - pre_tunnel_states + 1
   n_dest <- n_dest_first:n_dest_last_non_tunnel
 
-  # indices for the top left of each tunnel block are the same for all
-  # pre-tunnel states, so work them out just once:
-  tunnel_starts <- seq(
-    from = tun_start[2],
-    to = tun_start[2] + (n_tunnels - 1) * n_cycles,
-    by = n_cycles
-  )
+  # the tunnels are different sizes, so compute the start points for each.
+  # this can be done by taking n(pre-tunnel), then adding up the sizing of all
+  # tunnels except the last one:
+  tunnel_starts <- pre_tunnel_states + cumsum(c(1L, head(tunnel_lengths, -1L)))
 
   # add one row/column at the extreme right and bottom for the dead state:
-  dead_rowcol <- max(tunnel_starts) + n_cycles
+  dead_rowcol <- max(tunnel_starts) + tunnel_lengths[length(tunnel_lengths)]
 
   tun_j <- c(tunnel_starts, dead_rowcol)
 
