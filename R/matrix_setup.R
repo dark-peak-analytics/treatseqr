@@ -104,39 +104,48 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
     tun_j[i:length(tun_j)]
   })
 
-  # we can cycle through the above to generate the i,j,x for m2:
+  # we can cycle through the above to generate the i,j,x for m2. Note that in
+  # each tunnel, the last transition is placed on the diagonal to give users the
+  # flexibility to "hold" patients at the end of a tunnel, or set the tp_source
+  # to have full probability of exit at the end.
   l_m2_ijx <- lapply(
-    X = tun_topleft,
-    FUN = function(tun_start_cols) {
-      if (length(tun_start_cols) == 1) {
-        # This is the death state. coordinates are bottom right element:
+    X = seq_along(tun_topleft),
+    FUN = function(i_tunnel_block) {
+      if (i_tunnel_block == length(tun_topleft)) {
+        # This is the death state. Coordinates are bottom right element:
         list(i = dead_rowcol, j = dead_rowcol, x = 1)
       } else {
-        # this is a tunnel block with n_cycles states. The first set are
-        # superdiagonal (1), whilst the others are veritcally arranged
+        # this is a tunnel block with user-defined size. The first set are
+        # superdiagonal (1), whilst the others are vertically arranged. The last
+        # transition in the tunnel goes on the diagonal to allow users to
+        # specify "holding" at the end of the tunnel if they wish
+
+        # pull the block for readability:
+        block <- tun_topleft[[i_tunnel_block]]
 
         # first element's row is also the leftmost column of this tunnel block
-        tun_start_row <- tun_start_cols[1]
+        tun_start_row <- tunnel_starts[i_tunnel_block]
+        tun_len <- tunnel_lengths[i_tunnel_block]
 
         # rows for superdiagonal elements go from that point. cols are +1
-        tun_sdiag_i <- tun_start_row + (seq_len(n_cycles) - 1)
+        tun_sdiag_i <- tun_start_row + (seq_len(tun_len) - 1)
         tun_sdiag_j <- tun_sdiag_i + 1
 
-        # last state of the last non-dead tunnel self-loops instead of
-        # advancing to overflow/dead via superdiagonal:
-        if (length(tun_start_cols) == 2) {
-          tun_sdiag_j[n_cycles] <- tun_sdiag_i[n_cycles]
-        }
+        # each block self-loops at the end of its extent, instead of imposing
+        # any transitions. This means that the user can specify probability of
+        # exit as 1 themselves instead of it being forced by the function.
+        tun_sdiag_j[tun_len] <- tun_sdiag_i[tun_len]
 
         # rest of the transitions are vertically arranged:
-        vertical_strips <- tun_start_cols[-1]
+        vertical_strips <- block[-1]
 
         # row indices are the same as for the superdiagonals:
         tun_vert_i <- rep(tun_sdiag_i, length(vertical_strips))
 
-        # column indices just repeat element of vertical_strips n_cycles times
-        tun_vert_j <- rep(vertical_strips, each = n_cycles)
+        # column indices: j = repeat horizontal location tun_len times
+        tun_vert_j <- rep(vertical_strips, each = tun_len)
 
+        # return a list for consolidation later.
         list(
           i = c(tun_sdiag_i, tun_vert_i),
           j = c(tun_sdiag_j, tun_vert_j),
@@ -163,7 +172,7 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
     m1_ijx = m1_ijx,
     m2_ijx = m2_ijx,
     matrix_size = dead_rowcol,
-    n_cycles = n_cycles,
+    tunnel_lengths = tunnel_lengths,
     pre_tunnels = pre_tunnel_states
   )
 }
