@@ -24,6 +24,9 @@ generate_m_list(
 
 \item{transition_prob_list}{A list of transition probabilities for each
 state.}
+
+\item{first_state_name}{A character string naming the initial (pre-tunnel)
+state. Defaults to \code{"initial"}.}
 }
 \value{
 A list with two elements:

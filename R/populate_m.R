@@ -21,6 +21,8 @@
 #'   - m2_ijx: Coordinate matrix for m2.
 #' @param transition_prob_list A list of transition probabilities for each
 #' state.
+#' @param first_state_name A character string naming the initial (pre-tunnel)
+#' state. Defaults to `"initial"`.
 #'
 #' @return A list with two elements:
 #'   - m1: A list of sparse matrices (one per cycle) for pre-tunnel states.
@@ -115,7 +117,6 @@ generate_m_list <- function(
     x = m2_ijx[, "x"],
     dims = c(matrix_size, matrix_size)
   )
-  sm_m2[nrow(sm_m2) - 1, ncol(sm_m2)] <- 1
 
   # quick assert check:
   assertthat::assert_that(

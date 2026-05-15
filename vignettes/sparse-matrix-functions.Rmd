@@ -502,7 +502,7 @@ m2 <- m$m2
 # extrapolate the model:
 for (cyc in seq_len(th_cyc) + 1) {
   pop[, cyc] <-
-    as.numeric(pop[1, cyc - 1] %*% m1[[cyc - 1]]) +
+    as.numeric(pop[seq_len(m_spec$pre_tunnels), cyc - 1] %*% m1[[cyc - 1]]) +
     as.numeric(pop[, cyc - 1] %*% m2)
 }
 ```
@@ -542,7 +542,7 @@ entered the row numbers manually to help you see the blocks for yourselves. Note
 that the time horizon is 50 cycles in this example:
 
 ```{r plot_tunnel_pops}
-plot(1 - pop[203, ],
+plot(1 - pop[202, ],
   type = "l",
   col = "black",
   xlab = "Cycle", ylab = "Tunnel 1 Population",
@@ -551,7 +551,7 @@ plot(1 - pop[203, ],
 lines(colSums(pop[2:51, ]), type = "l", col = "grey80")
 lines(colSums(pop[52:101, ]), type = "l", col = "red")
 lines(colSums(pop[102:151, ]), type = "l", col = "blue")
-lines(colSums(pop[152:202, ]), type = "l", col = "green")
+lines(colSums(pop[152:201, ]), type = "l", col = "green")
 ```
 
 
@@ -570,7 +570,7 @@ This lets you plot something more familiar, but only if you divide the values by
 their first element. Without that, it looks strange:
 
 ```{r plot_d_unadjusted}
-plot(1 - pop[203, ],
+plot(1 - pop[202, ],
   type = "l",
   col = "black",
   xlab = "Cycle", ylab = "Tunnel 1 Population",
@@ -579,14 +579,14 @@ plot(1 - pop[203, ],
 lines(rowSums(pop[2:51, ]), type = "l", col = "grey80")
 lines(rowSums(pop[52:101, ]), type = "l", col = "red")
 lines(rowSums(pop[102:151, ]), type = "l", col = "blue")
-lines(rowSums(pop[152:202, ]), type = "l", col = "green")
+lines(rowSums(pop[152:201, ]), type = "l", col = "green")
 ```
 
 But if you adjust it for the proportion of the initial cohort that ever entered
 each tunnel, you get something more familiar:
 
 ```{r plot_d_adjusted}
-plot(1 - pop[203, ],
+plot(1 - pop[202, ],
   type = "l",
   col = "black",
   xlab = "Cycle", ylab = "Tunnel 1 Population",
@@ -595,7 +595,7 @@ plot(1 - pop[203, ],
 lines(rowSums(pop[2:51, ]) / sum(pop[2, ]), type = "l", col = "grey80")
 lines(rowSums(pop[52:101, ]) / sum(pop[52, ]), type = "l", col = "red")
 lines(rowSums(pop[102:151, ]) / sum(pop[102, ]), type = "l", col = "blue")
-lines(rowSums(pop[152:202, ]) / sum(pop[152, ]), type = "l", col = "green")
+lines(rowSums(pop[152:201, ]) / sum(pop[152, ]), type = "l", col = "green")
 ```
 
 This is the **within-tunnel survival curve** for each tunnel, which is much more
@@ -608,7 +608,9 @@ curves. This is because the appropriate endpoint for informing the transition
 probabilities needs to have carefully designed censoring rules to isolate the
 hazard of a specific transition. Therefore, these curves, which also include
 exiting the state for _any_ reason (not just one specific event) should be
-compared to Kaplan-Meier which does not e.g., censor for death.  
+compared to Kaplan-Meier which **does not e.g., censor for death**. In other
+words, these extrapolations should be compared to within-state survival, not
+e.g., time to progression. 
 
 As long as you carefully think about what data these lines should be compared
 to first, you can use these survival at time `d` for each tunnel plots to

@@ -75,7 +75,7 @@ specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
   )
 
   # add one row/column at the extreme right and bottom for the dead state:
-  dead_rowcol <- max(tunnel_starts) + n_cycles + 1
+  dead_rowcol <- max(tunnel_starts) + n_cycles
 
   tun_j <- c(tunnel_starts, dead_rowcol)
 
@@ -133,6 +133,12 @@ specify_m <- function(n_cycles, n_tunnels, pre_tunnel_states = 1) {
         # rows for superdiagonal elements go from that point. cols are +1
         tun_sdiag_i <- tun_start_row + (seq_len(n_cycles) - 1)
         tun_sdiag_j <- tun_sdiag_i + 1
+
+        # last state of the last non-dead tunnel self-loops instead of
+        # advancing to overflow/dead via superdiagonal:
+        if (length(tun_start_cols) == 2) {
+          tun_sdiag_j[n_cycles] <- tun_sdiag_i[n_cycles]
+        }
 
         # rest of the transitions are vertically arranged:
         vertical_strips <- tun_start_cols[-1]

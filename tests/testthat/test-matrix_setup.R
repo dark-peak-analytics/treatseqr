@@ -31,12 +31,12 @@ test_that("specify_m returns correct values for known case", {
   expect_equal(
     result$m1_ijx,
     structure(
-      c(1, 1, 1, 1, 1, 1, 1, 1, 2, 7, 12, 17, 22, 28, 0, 0, 0, 0, 0, 0, 0),
+      c(1, 1, 1, 1, 1, 1, 1, 1, 2, 7, 12, 17, 22, 27, 0, 0, 0, 0, 0, 0, 0),
       dim = c(7L, 3L),
       dimnames = list(NULL, c("i", "j", "x"))
     )
   )
-  expect_equal(result$matrix_size, 28)
+  expect_equal(result$matrix_size, 27)
 })
 
 test_that("specify_m handles minimal valid input", {
@@ -45,7 +45,7 @@ test_that("specify_m handles minimal valid input", {
   expect_equal(
     result$m1_ijx,
     structure(
-      c(1, 1, 1, 1, 2, 4, 0, 0, 0),
+      c(1, 1, 1, 1, 2, 3, 0, 0, 0),
       dim = c(3L, 3L),
       dimnames = list(NULL, c("i", "j", "x"))
     )
@@ -53,12 +53,12 @@ test_that("specify_m handles minimal valid input", {
   expect_equal(
     result$m2_ijx,
     structure(
-      c(2, 2, 4, 3, 4, 4, 0, 0, 1),
+      c(2, 2, 3, 2, 3, 3, 0, 0, 1),
       dim = c(3L, 3L),
       dimnames = list(NULL, c("i", "j", "x"))
     )
   )
-  expect_equal(result$matrix_size, 4)
+  expect_equal(result$matrix_size, 3)
 })
 
 test_that("specify_m errors on non-integer input", {
@@ -156,7 +156,7 @@ test_that("specify_m works for large valid input", {
         702,
         802,
         902,
-        1003,
+        1002,
         0,
         0,
         0,
@@ -174,7 +174,7 @@ test_that("specify_m works for large valid input", {
       dimnames = list(NULL, c("i", "j", "x"))
     )
   )
-  expect_equal(result$matrix_size, 1003)
+  expect_equal(result$matrix_size, 1002)
 })
 
 test_that("specify_m errors if required arguments are missing", {
