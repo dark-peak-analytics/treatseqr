@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-library(heseqmat)
+library(treatseqr)
 ```
 
 This vignette demonstrates how to use sparse matrices to extrapolate "tunnel states" in a health economics context.

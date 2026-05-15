@@ -1,8 +1,8 @@
 ---
-title: "Sparse Matrix Extrapolation using `heseqmat`"
+title: "Sparse Matrix Extrapolation using `treatseqr`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Sparse Matrix Extrapolation using heseqmat}
+  %\VignetteIndexEntry{Sparse Matrix Extrapolation using treatseqr}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-library(heseqmat)
+library(treatseqr)
 ```
 
 # Introduction
@@ -99,7 +99,7 @@ The size of `M` is determined by several things:
 `M` is square, and can be defined using the function `specify_m`:
 
 ```{r specify_m}
-m_spec <- heseqmat::specify_m(
+m_spec <- treatseqr::specify_m(
   n_cycles = 5,
   n_tunnels = 3,
   pre_tunnel_states = 2
@@ -631,7 +631,7 @@ extrapolates the model, returning the full trace for you to do with as you
 please:
 
 ```{r extrapolate}
-trace <- extrapolate_heseqmat(m = m, spec = m_spec)
+trace <- extrapolate_treatseqr(m = m, spec = m_spec)
 colSums(trace)
 ```
 
@@ -640,7 +640,7 @@ colSums(trace)
 
 After the trace runs, we need to consolidate the results into useful outputs.
 This usually includes both the vertical and horizontal sums (see above). The
-function `consolidate_heseqmat_trace` does this for you, returning a list
+function `consolidate_treatseqr_trace` does this for you, returning a list
 containing both.
 
 Interestingly, the bounds of the states within `trace` always correspond to the
@@ -659,7 +659,7 @@ the bounds are just the transpose of each other.
 
 
 ```{r consolidate}
-trace <- consolidate_heseqmat_trace(
+trace <- consolidate_treatseqr_trace(
   full_trace = trace,
   spec = m_spec,
   state_names = m$state_names

@@ -16,7 +16,7 @@
 #'   state at each time point.
 #'
 #' @export
-extrapolate_heseqmat <- function(m, spec) {
+extrapolate_treatseqr <- function(m, spec) {
   # output population matrix:
   th <- spec$n_cycles
   pop <- matrix(0, nrow = spec$matrix_size, ncol = th + 1)

@@ -1,5 +1,5 @@
 #' Functions to consolidate `trace` after it is calculated using
-#' `extrapolate_heseqmat`
+#' `extrapolate_treatseqr`
 
 #' Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks
 #'
@@ -25,7 +25,7 @@
 #' - The function is useful for cost-effectiveness modeling where tunnel states are present.
 #'
 #' @export
-consolidate_heseqmat_trace <- function(full_trace, spec, state_names) {
+consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
   pre_tun <- spec$pre_tunnels
   bounds <- spec$m1_ijx[, "j"]
   th <- spec$n_cycles

@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(heseqmat)
+library(treatseqr)
 
-test_check("heseqmat")
+test_check("treatseqr")
