@@ -18,7 +18,7 @@
 #' @export
 extrapolate_treatseqr <- function(m, spec) {
   # output population matrix:
-  th <- spec$n_cycles
+  th <- length(m$m1)
   pop <- matrix(0, nrow = spec$matrix_size, ncol = th + 1)
   pop[1, 1] <- 1
 
