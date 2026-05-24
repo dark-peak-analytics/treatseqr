@@ -13,8 +13,9 @@
 #' - m1 corresponds to pre-tunnel states for each model cycle.
 #' - m2 corresponds to tunnel states after entering the sequence.
 #'
-#' @param m_specification A list containing model parameters, including:
-#'   - n_cycles: Number of model cycles.
+#' @param m_specification A list containing model parameters, as returned by
+#'   \code{specify_m()}. Required fields:
+#'   - tunnel_lengths: Integer vector of per-tunnel cycle counts.
 #'   - pre_tunnels: Number of pre-tunnel states.
 #'   - matrix_size: Size of the transition matrix.
 #'   - m1_ijx: Coordinate matrix for m1.
@@ -49,7 +50,7 @@ generate_m_list <- function(
 ) {
   # validate the transition probability source list.
   # This will return a valid list or an error.
-  valid_tp <- validate_tp_source(transition_prob_list)
+  valid_tp <- validate_tp_source(transition_prob_list, m_specification$tunnel_lengths)
   state_names <- rapply(valid_tp, function(x) 1, how = "list")[[1]] |>
     unlist() |>
     names()

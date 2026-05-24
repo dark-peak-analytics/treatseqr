@@ -364,7 +364,10 @@ When we validate against these rules, the function returns us an object that can
 be used to populate `m1` and `m2` (in this case the same as the data going in):
 
 ```{r validate_transition_probabilities}
-valid_tp <- validate_tp_source(tp_source = tp_source)
+valid_tp <- validate_tp_source(
+  tp_source = tp_source,
+  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L)
+)
 lobstr::tree(
   rapply(valid_tp, function(x) round(x, 2), how = "list")
 )
@@ -416,7 +419,10 @@ compared to:
 
 ```{r validate_transition_probabilities_with_nulls}
 # Fills in the blanks if they are NULLs
-valid_tp <- validate_tp_source(tp_source = tp_source)
+valid_tp <- validate_tp_source(
+  tp_source = tp_source,
+  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L)
+)
 lobstr::tree(
   rapply(valid_tp, function(x) round(x, 2), how = "list")
 )
@@ -440,11 +446,11 @@ These are:
 - `tunnel_lengths`
 - `pre_tunnel_states`
 
-Unlike the old n_cycles parameter, tunnel_lengths cannot be derived
+Unlike the old `n_cycles` parameter, `tunnel_lengths` cannot be derived
 automatically from the transition probability data, because different tunnels
 may have different lengths — that is a modelling choice, not something inferable
 from TP vector structure. The number of tunnels is not a separate argument; it
-is implicit in length(tunnel_lengths).
+is implicit in `length(tunnel_lengths)`.
 
 `pre_tunnel_states` must also be determined by the user, as the structure of the
 TP data alone does not distinguish pre-tunnel states from tunnel states. There
@@ -459,7 +465,7 @@ In most oncology settings, only the first state can be a pre-tunnel state
 because the transition from e.g., off-treatment in first line to any subsequent
 state has an index date of discontinuation event for first line therapy, not
 baseline. However, there are feasibly use-cases for multiple pre-tunnel states.
-Yet for this example, we say that only on_1l is a pre-tunnel state.
+Yet for this example, **we say that only `on_1l` is a pre-tunnel state**.
 
 ```{r specify_m_from_valid_tp}
 m_spec <- specify_m(

@@ -100,3 +100,93 @@ test_that("validate_tp_source should error on single state case", {
   single <- list(a = list(die = 0.5))
   expect_error(validate_tp_source(tp_source = single))
 })
+
+# ------------------------------------------------------------
+# Variable-length tunnel tests
+# ------------------------------------------------------------
+
+test_that("validate_tp_source accepts variable-length tunnels", {
+  # 1 pre-tunnel state, tunnel 1 length 3, tunnel 2 length 5
+  # pre-tunnel vectors length 5 (= max, the model horizon)
+  tp <- list(
+    pre = list(
+      tun1 = rep(0.10, 5),
+      tun2 = rep(0.05, 5),
+      die  = rep(0.02, 5)
+    ),
+    tun1 = list(
+      tun2 = rep(0.15, 3),
+      die  = rep(0.10, 3)
+    ),
+    tun2 = list(
+      die = rep(0.20, 5)
+    )
+  )
+
+  res <- validate_tp_source(tp, tunnel_lengths = c(3, 5))
+
+  expect_equal(names(res), names(tp))
+  # pre-tunnel vectors unchanged
+  expect_length(res$pre$tun1, 5)
+  # tunnel 1 vectors length 3
+  expect_length(res$tun1$die, 3)
+  # tunnel 2 vectors length 5
+  expect_length(res$tun2$die, 5)
+})
+
+test_that("validate_tp_source fills NULL in variable-length tunnel with correct length", {
+  tp <- list(
+    pre = list(
+      tun1 = rep(0.10, 6),
+      tun2 = NULL,        # should become rep(0, 6)
+      die  = rep(0.02, 6)
+    ),
+    tun1 = list(
+      tun2 = NULL,        # should become rep(0, 4)
+      die  = rep(0.10, 4)
+    ),
+    tun2 = list(
+      die = rep(0.20, 7)
+    )
+  )
+
+  res <- validate_tp_source(tp, tunnel_lengths = c(4, 7))
+
+  expect_equal(res$pre$tun2, rep(0, 6))
+  expect_equal(res$tun1$tun2, rep(0, 4))
+})
+
+test_that("validate_tp_source errors when tunnel vector has wrong length", {
+  tp <- list(
+    pre = list(
+      tun1 = rep(0.10, 5),
+      tun2 = rep(0.05, 5),
+      die  = rep(0.02, 5)
+    ),
+    tun1 = list(
+      tun2 = rep(0.15, 3),  # correct: tunnel 1 length is 3
+      die  = rep(0.10, 3)
+    ),
+    tun2 = list(
+      die = rep(0.20, 3)    # wrong: tunnel 2 length should be 5, not 3
+    )
+  )
+
+  expect_error(
+    validate_tp_source(tp, tunnel_lengths = c(3, 5)),
+    "Length mismatch"
+  )
+})
+
+test_that("validate_tp_source errors when tunnel_lengths leaves no room for pre-tunnel", {
+  tp <- list(
+    a = list(b = rep(0.1, 5), die = rep(0.05, 5)),
+    b = list(die = rep(0.2, 5))
+  )
+
+  # length(tunnel_lengths) == length(tp_source) — no pre-tunnel state
+  expect_error(
+    validate_tp_source(tp, tunnel_lengths = c(5, 5)),
+    "need at least 1 pre-tunnel state"
+  )
+})

@@ -12,8 +12,8 @@
 #'     1).
 #'     \item The names of the inner lists must be topologically consistent
 #'     (subset rule).
-#'     \item All probability vectors must have the same length (number of
-#'     cycles).
+#'     \item All probability vectors must have consistent lengths (see
+#'     \code{tunnel_lengths} below).
 #'     \item Probabilities must be non-negative and sum to <= 1 (row-wise).
 #'     \item Any `NULL` transition vectors are replaced with numeric vectors of
 #'     zeros of the correct length.
@@ -21,7 +21,14 @@
 #'
 #' @param tp_source A named list of lists containing transition probability
 #'   vectors. The structure must follow specific rules as described above.
-#' @param tunnel_lengths A numeric vector indicating the lengths of each tunnel.
+#' @param tunnel_lengths An optional integer vector giving the length of each
+#'   tunnel state block, in order (one element per tunnel). When \code{NULL}
+#'   (default), all probability vectors must have the same length and the
+#'   function behaves as in the uniform-tunnel case. When supplied, the number
+#'   of pre-tunnel states is inferred as
+#'   \code{length(tp_source) - length(tunnel_lengths)}, pre-tunnel TP vectors
+#'   must all share a common length, and each tunnel \code{k}'s vectors must
+#'   have length \code{tunnel_lengths[k]}.
 #'
 #' @return The sanitized `tp_source` list where all `NULL` entries have been
 #'   replaced with vectors of zeros of the correct length.
@@ -55,64 +62,102 @@ validate_tp_source <- function(tp_source, tunnel_lengths = NULL) {
     )
   )
 
-  # Name check. Checks that names in next tunnel are strict subset of precedent
-  for (i in seq_len(n_states - 1)) {
-    curr_names <- names(tp_source[[i]])
-    next_names <- names(tp_source[[i + 1]])
-
-    assertthat::assert_that(
-      !is.null(curr_names) && !is.null(next_names),
-      msg = "All inner lists in tp_source must be named"
-    )
-
-    missing_names <- setdiff(next_names, curr_names)
-    assertthat::assert_that(
-      length(missing_names) == 0,
-      msg = sprintf(
-        "Topology error: State '%s' contains transitions to {%s} which are not present in the previous state '%s'.",
-        names(tp_source)[i + 1],
-        paste(missing_names, collapse = ", "),
-        names(tp_source)[i]
-      )
-    )
-  }
-
-  # Find the number of cycles from the first non-null, non-empty vector
-  n_cyc <- NULL
-
-  # Flatten temporarily to find a valid vector
-  all_vectors <- unlist(tp_source, recursive = FALSE)
-  for (v in all_vectors) {
-    if (!is.null(v) && length(v) > 0) {
-      n_cyc <- length(v)
-      break
-    }
-  }
-
+  # Name check: names of each state must be a subset of the previous state's
+  # names. Compute all pairwise setdiffs at once, then report the first
+  # violation.
   assertthat::assert_that(
-    !is.null(n_cyc),
-    msg = "Could not determine number of cycles (all vectors are NULL or empty)"
+    all(vapply(tp_source, function(x) !is.null(names(x)), logical(1L))),
+    msg = "All inner lists in tp_source must be named"
   )
 
-  # Sanitize: Loop through structure, validate lengths/values, replace NULLs
-  sanitized_tp <- lapply(names(tp_source), function(state_name) {
-    state_list <- tp_source[[state_name]]
+  missing_names <- Map(
+    function(curr, nxt) setdiff(names(nxt), names(curr)),
+    tp_source[-n_states],
+    tp_source[-1L]
+  )
+  violation_idx <- which(lengths(missing_names) > 0L)
+  if (length(violation_idx) > 0L) {
+    i <- violation_idx[1L]
+    stop(sprintf(
+      "Topology error: State '%s' contains transitions to {%s} which are not present in the previous state '%s'.",
+      names(tp_source)[i + 1L],
+      paste(missing_names[[i]], collapse = ", "),
+      names(tp_source)[i]
+    ))
+  }
 
-    # Process each transition within the state
+  # ------------------------------------------------------------------
+  # Determine expected vector lengths per state
+  # ------------------------------------------------------------------
+
+  if (is.null(tunnel_lengths)) {
+    # Uniform case: all vectors must share a single common length. Infer it
+    # from the first non-null, non-empty vector.
+    all_vectors <- unlist(tp_source, recursive = FALSE)
+    vec_lens <- lengths(all_vectors)
+    n_cyc <- vec_lens[vec_lens > 0L][1L]
+    assertthat::assert_that(
+      !is.na(n_cyc),
+      msg = "Could not determine number of cycles (all vectors are NULL or empty)"
+    )
+    # One expected length per state
+    expected_vec_lengths <- rep(n_cyc, n_states)
+
+  } else {
+    # Variable-length case.
+    n_tunnels <- length(tunnel_lengths)
+    assertthat::assert_that(
+      n_tunnels >= 1,
+      n_tunnels <= n_states - 1,
+      msg = sprintf(
+        paste0(
+          "length(tunnel_lengths) must be >= 1 and <= length(tp_source) - 1.",
+          " Got %d tunnels for %d states (need at least 1 pre-tunnel state)."
+        ),
+        n_tunnels,
+        n_states
+      )
+    )
+
+    pre_tunnels <- n_states - n_tunnels
+
+    # Infer th (pre-tunnel horizon) from first non-null, non-empty vector in
+    # the pre-tunnel states.
+    pre_tun_vectors <- unlist(tp_source[seq_len(pre_tunnels)], recursive = FALSE)
+    vec_lens <- lengths(pre_tun_vectors)
+    th <- vec_lens[vec_lens > 0L][1L]
+    assertthat::assert_that(
+      !is.na(th),
+      msg = "Could not determine pre-tunnel horizon (all pre-tunnel vectors are NULL or empty)"
+    )
+
+    # Pre-tunnel states all share th; tunnel k has length tunnel_lengths[k]
+    expected_vec_lengths <- c(rep(th, pre_tunnels), tunnel_lengths)
+  }
+
+  # ------------------------------------------------------------------
+  # Sanitize: validate lengths/values and replace NULLs
+  # ------------------------------------------------------------------
+
+  sanitized_tp <- lapply(seq_along(tp_source), function(state_idx) {
+    state_name <- names(tp_source)[state_idx]
+    state_list <- tp_source[[state_idx]]
+    exp_len    <- expected_vec_lengths[state_idx]
+
     new_state_list <- lapply(names(state_list), function(trans_name) {
       vec <- state_list[[trans_name]]
 
       if (is.null(vec)) {
-        return(numeric(n_cyc))
+        return(numeric(exp_len))
       }
 
       assertthat::assert_that(
-        length(vec) == n_cyc,
+        length(vec) == exp_len,
         msg = sprintf(
           "Length mismatch in transition %s -> %s. Expected %d, found %d.",
           state_name,
           trans_name,
-          n_cyc,
+          exp_len,
           length(vec)
         )
       )
@@ -134,22 +179,16 @@ validate_tp_source <- function(tp_source, tunnel_lengths = NULL) {
   })
   names(sanitized_tp) <- names(tp_source)
 
-  # 4. Summation Constraint
-  # Element-wise sum of all transitions out of a state must be <= 1
-  for (state_name in names(sanitized_tp)) {
-    trans_list <- sanitized_tp[[state_name]]
-
-    # Efficient element-wise sum of list of vectors
-    total_prob <- Reduce(`+`, trans_list)
-
-    # Check with tolerance for floating point arithmetic
-    assertthat::assert_that(
-      all(total_prob <= 1 + 1e-10),
-      msg = sprintf(
-        "Probabilities for state '%s' sum to > 1 in some cycles.",
-        state_name
-      )
-    )
+  # Summation constraint: element-wise sum of all transitions out of a state
+  # must be <= 1 for every cycle. Compute all row-sums at once, then report
+  # the first violating state.
+  total_probs <- lapply(sanitized_tp, function(state_list) Reduce(`+`, state_list))
+  violations <- which(vapply(total_probs, function(tp) any(tp > 1 + 1e-10), logical(1L)))
+  if (length(violations) > 0L) {
+    stop(sprintf(
+      "Probabilities for state '%s' sum to > 1 in some cycles.",
+      names(sanitized_tp)[violations[1L]]
+    ))
   }
 
   sanitized_tp
