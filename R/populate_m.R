@@ -55,8 +55,12 @@ generate_m_list <- function(
     names()
   state_names <- c(first_state_name, state_names)
 
+  # the time horizon must be the longest of the pre-tunnel state probs because
+  # these are needed for every cycle in the model, so the tunnel lengths aren't
+  # even needed:
+
   # some useful variables to use throughout the funciton
-  th <- m_specification$n_cycles
+  th <- max(unlist(lapply(transition_prob_list[[1]], length)))
   pre_tun_states <- m_specification$pre_tunnels
   n_states <- length(valid_tp)
   tunnels <- n_states - pre_tun_states - 1
