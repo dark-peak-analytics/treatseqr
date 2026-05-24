@@ -1,11 +1,12 @@
 #' Specify Matrix Indices and Size for Sequence Model with Tunnel States
 #'
 #' Computes the coordinate matrices for the main transition matrix of a sequence
-#' model with tunnel states, as well as the overall matrix size, given the
-#' number of cycles, tunnel states, and pre-tunnel states.
+#' model with tunnel states, as well as the overall matrix size, given a vector
+#' of tunnel lengths and the number of pre-tunnel states.
 #'
-#' @param n_cycles Integer. Number of cycles in each tunnel (must be > 0).
-#' @param n_tunnels Integer. Number of tunnel state blocks (must be > 0).
+#' @param tunnel_lengths Integer vector. Length of each tunnel state block (one
+#'   element per tunnel; all values must be positive integers). The number of
+#'   tunnels is inferred from the length of this vector.
 #' @param pre_tunnel_states Integer. Number of pre-tunnel states before entering
 #' the first tunnel (default is 1, must be between 1 and 10).
 #'
@@ -17,6 +18,8 @@
 #'     transitions and death state.}
 #'     \item{matrix_size}{Integer. The total number of states (rows/columns) in
 #'     the transition matrix.}
+#'     \item{tunnel_lengths}{The \code{tunnel_lengths} vector as supplied.}
+#'     \item{pre_tunnels}{The \code{pre_tunnel_states} value as supplied.}
 #'   }
 #' @details
 #' The function generates coordinate matrices for efficiently populating a
@@ -25,15 +28,25 @@
 #' states, while \code{m2_ijx} contains the coordinates for transitions within
 #' tunnel states and to the absorbing (death) state.
 #'
+#' Tunnels may have different lengths (variable-duration tunnels). The total
+#' matrix size is \code{pre_tunnel_states + sum(tunnel_lengths) + 1}.
+#'
 #' @examples
-#' specify_m(5, 2)
-#' specify_m(3, 3, pre_tunnel_states = 2)
+#' # Two tunnels of equal length (5 cycles each)
+#' specify_m(rep(5, 2))
+#'
+#' # Three tunnels of different lengths
+#' specify_m(c(3, 5, 2))
+#'
+#' # Multiple pre-tunnel states
+#' specify_m(rep(3, 3), pre_tunnel_states = 2)
 #' @export
 specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
   assertthat::assert_that(
     is.numeric(tunnel_lengths),
     length(tunnel_lengths) >= 1,
     all(tunnel_lengths == as.integer(tunnel_lengths)),
+    all(tunnel_lengths > 0),
     msg = "tunnel_lengths must be a vector of positive integers"
   )
   assertthat::assert_that(

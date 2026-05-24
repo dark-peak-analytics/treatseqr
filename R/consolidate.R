@@ -70,9 +70,13 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
   })
   trace_tun_d <- lapply(tun_blocks, function(tun_idx) {
     index <- seq(tun_idx[1], tun_idx[2])
-    d_vec <- rowSums(full_trace[index, ]) / sum(full_trace[index[1], ])
-    d_vec <- c(d_vec, rep(0, th - length(d_vec)))
-    d_vec
+    total <- sum(full_trace[index[1], ])
+    if (total == 0) {
+      d_vec <- rep(0, length(index))
+    } else {
+      d_vec <- rowSums(full_trace[index, ]) / total
+    }
+    c(d_vec, rep(0, th - length(d_vec)))
   })
 
   # return list with 2 matrices, one for t-based, one for d based:
