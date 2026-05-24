@@ -2,20 +2,18 @@
 # - Checks that the return type is a list with correct elements.
 # - Verifies that the m1_ijx matrix contains the correct indices for the top row(s) of
 # the transition matrix.
-# - Ensures that the matrix_size is correct for the given number of cycles and
-# tunnel states.
+# - Ensures that the matrix_size is correct for the given tunnel_lengths vector.
 # - Confirms that invalid inputs trigger errors.
 
 test_that("specify_m returns correct structure", {
-  result <- specify_m(n_cycles = 5, n_tunnels = 5)
+  result <- specify_m(tunnel_lengths = rep(5, 5))
 
   expect_type(result, "list")
-  # Names might be in any order, so just check they're all present
   expect_setequal(
     names(result),
-    c("n_cycles", "m1_ijx", "m2_ijx", "matrix_size", "pre_tunnels")
+    c("tunnel_lengths", "m1_ijx", "m2_ijx", "matrix_size", "pre_tunnels")
   )
-  expect_equal(result$n_cycles, 5)
+  expect_equal(result$tunnel_lengths, rep(5, 5))
   expect_equal(result$pre_tunnels, 1)
   expect_true(is.matrix(result$m1_ijx))
   expect_true(is.matrix(result$m2_ijx))
@@ -26,7 +24,7 @@ test_that("specify_m returns correct structure", {
 })
 
 test_that("specify_m returns correct values for known case", {
-  result <- specify_m(n_cycles = 5, n_tunnels = 5)
+  result <- specify_m(tunnel_lengths = rep(5, 5))
 
   expect_equal(
     result$m1_ijx,
@@ -40,7 +38,7 @@ test_that("specify_m returns correct values for known case", {
 })
 
 test_that("specify_m handles minimal valid input", {
-  result <- specify_m(n_cycles = 1, n_tunnels = 1)
+  result <- specify_m(tunnel_lengths = c(1))
 
   expect_equal(
     result$m1_ijx,
@@ -61,52 +59,54 @@ test_that("specify_m handles minimal valid input", {
   expect_equal(result$matrix_size, 3)
 })
 
+test_that("specify_m variable-length tunnels: matrix_size and tunnel_starts are correct", {
+  # tunnel_lengths = c(3, 5, 2): 3 tunnels of different lengths
+  # pre_tunnel_states = 1 (default)
+  # tunnel_starts: 1 + cumsum(c(1, 3, 5)) = 1 + c(1, 4, 9) = c(2, 5, 10)
+  # dead = max(c(2,5,10)) + 2 = 12
+  # matrix_size = 12
+  result <- specify_m(tunnel_lengths = c(3, 5, 2))
+
+  expect_equal(result$tunnel_lengths, c(3, 5, 2))
+  expect_equal(result$matrix_size, 12)
+
+  # All indices within bounds
+  expect_true(all(result$m1_ijx[, "i"] <= result$matrix_size))
+  expect_true(all(result$m1_ijx[, "j"] <= result$matrix_size))
+  expect_true(all(result$m2_ijx[, "i"] <= result$matrix_size))
+  expect_true(all(result$m2_ijx[, "j"] <= result$matrix_size))
+})
+
 test_that("specify_m errors on non-integer input", {
   expect_error(
-    specify_m(n_cycles = 2.5, n_tunnels = 2),
-    "n_cycles must be a single positive integer"
-  )
-  expect_error(
-    specify_m(n_cycles = 2, n_tunnels = 2.5),
-    "n_tunnels must be a single positive integer"
+    specify_m(tunnel_lengths = c(2.5, 2)),
+    "tunnel_lengths must be a vector of positive integers"
   )
 })
 
 test_that("specify_m errors on negative input", {
   expect_error(
-    specify_m(n_cycles = -1, n_tunnels = 2),
-    "n_cycles must be a single positive integer"
-  )
-  expect_error(
-    specify_m(n_cycles = 2, n_tunnels = -2),
-    "n_tunnels must be a single positive integer"
-  )
-})
-
-test_that("specify_m errors on vector input", {
-  expect_error(
-    specify_m(n_cycles = c(2, 3), n_tunnels = 2),
-    "n_cycles must be a single positive integer"
-  )
-  expect_error(
-    specify_m(n_cycles = 2, n_tunnels = c(2, 3)),
-    "n_tunnels must be a single positive integer"
+    specify_m(tunnel_lengths = c(-1, 2)),
+    "tunnel_lengths must be a vector of positive integers"
   )
 })
 
 test_that("specify_m errors on zero input", {
   expect_error(
-    specify_m(n_cycles = 0, n_tunnels = 2),
-    "n_cycles must be a single positive integer"
+    specify_m(tunnel_lengths = c(0, 2)),
+    "tunnel_lengths must be a vector of positive integers"
   )
+})
+
+test_that("specify_m errors on empty vector", {
   expect_error(
-    specify_m(n_cycles = 2, n_tunnels = 0),
-    "n_tunnels must be a single positive integer"
+    specify_m(tunnel_lengths = integer(0)),
+    "tunnel_lengths must be a vector of positive integers"
   )
 })
 
 test_that("specify_m works for multiple pre-tunnel states", {
-  result <- specify_m(n_cycles = 10, n_tunnels = 3, pre_tunnel_states = 10)
+  result <- specify_m(tunnel_lengths = rep(10, 3), pre_tunnel_states = 10)
 
   expect_equal(result$pre_tunnels, 10)
   expect_equal(nrow(result$m1_ijx), 95)
@@ -115,7 +115,6 @@ test_that("specify_m works for multiple pre-tunnel states", {
   # transitions except to itself and to tunnels/death
   last_pre_state_transitions <- result$m1_ijx[result$m1_ijx[, "i"] == 10, "j"]
 
-  # Row 10's transitions should only go to columns >= 10 (itself or tunnels/death)
   expect_true(
     all(last_pre_state_transitions >= 10),
     label = paste0(
@@ -126,49 +125,16 @@ test_that("specify_m works for multiple pre-tunnel states", {
 })
 
 test_that("specify_m works for large valid input", {
-  result <- specify_m(n_cycles = 100, n_tunnels = 10)
+  result <- specify_m(tunnel_lengths = rep(100, 10))
 
   expect_equal(nrow(result$m1_ijx), 12)
   expect_equal(
     result$m1_ijx,
     structure(
       c(
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        2,
-        102,
-        202,
-        302,
-        402,
-        502,
-        602,
-        702,
-        802,
-        902,
-        1002,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 2, 102, 202, 302, 402, 502, 602, 702, 802, 902, 1002,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
       ),
       dim = c(12L, 3L),
       dimnames = list(NULL, c("i", "j", "x"))
@@ -177,24 +143,20 @@ test_that("specify_m works for large valid input", {
   expect_equal(result$matrix_size, 1002)
 })
 
-test_that("specify_m errors if required arguments are missing", {
+test_that("specify_m errors if required argument tunnel_lengths is missing", {
   expect_error(
-    specify_m(n_cycles = 2),
-    "argument \"n_tunnels\" is missing"
-  )
-  expect_error(
-    specify_m(n_tunnels = 2),
-    "argument \"n_cycles\" is missing"
+    specify_m(),
+    "argument \"tunnel_lengths\" is missing"
   )
 })
 
 test_that("specify_m pre_tunnel_states parameter works correctly", {
   # Test default (1 pre-tunnel state)
-  result1 <- specify_m(n_cycles = 5, n_tunnels = 2)
+  result1 <- specify_m(tunnel_lengths = rep(5, 2))
   expect_equal(result1$pre_tunnels, 1)
 
   # Test explicit pre_tunnel_states
-  result2 <- specify_m(n_cycles = 5, n_tunnels = 2, pre_tunnel_states = 3)
+  result2 <- specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = 3)
   expect_equal(result2$pre_tunnels, 3)
 
   # m1_ijx should have more rows with more pre-tunnel states
@@ -202,16 +164,13 @@ test_that("specify_m pre_tunnel_states parameter works correctly", {
 })
 
 test_that("specify_m matrix dimensions are consistent", {
-  result <- specify_m(n_cycles = 10, n_tunnels = 4, pre_tunnel_states = 2)
+  result <- specify_m(tunnel_lengths = rep(10, 4), pre_tunnel_states = 2)
 
-  # Matrix should be square
-  # All i and j values should be <= matrix_size
   expect_true(all(result$m1_ijx[, "i"] <= result$matrix_size))
   expect_true(all(result$m1_ijx[, "j"] <= result$matrix_size))
   expect_true(all(result$m2_ijx[, "i"] <= result$matrix_size))
   expect_true(all(result$m2_ijx[, "j"] <= result$matrix_size))
 
-  # All indices should be positive
   expect_true(all(result$m1_ijx[, "i"] > 0))
   expect_true(all(result$m1_ijx[, "j"] > 0))
   expect_true(all(result$m2_ijx[, "i"] > 0))
@@ -219,9 +178,8 @@ test_that("specify_m matrix dimensions are consistent", {
 })
 
 test_that("specify_m m2_ijx death state is correctly set", {
-  result <- specify_m(n_cycles = 5, n_tunnels = 3)
+  result <- specify_m(tunnel_lengths = rep(5, 3))
 
-  # Last row of m2_ijx should be the absorbing death state
   last_row <- result$m2_ijx[nrow(result$m2_ijx), ]
 
   expect_equal(unname(last_row["i"]), result$matrix_size)
@@ -231,19 +189,19 @@ test_that("specify_m m2_ijx death state is correctly set", {
 
 test_that("specify_m errors on invalid pre_tunnel_states", {
   expect_error(
-    specify_m(n_cycles = 5, n_tunnels = 2, pre_tunnel_states = 0),
+    specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = 0),
     "'pre_tunnel_states' must be a single positive integer"
   )
   expect_error(
-    specify_m(n_cycles = 5, n_tunnels = 2, pre_tunnel_states = -1),
+    specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = -1),
     "'pre_tunnel_states' must be a single positive integer"
   )
   expect_error(
-    specify_m(n_cycles = 5, n_tunnels = 2, pre_tunnel_states = 2.5),
+    specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = 2.5),
     "'pre_tunnel_states' must be a single positive integer"
   )
   expect_error(
-    specify_m(n_cycles = 5, n_tunnels = 2, pre_tunnel_states = 11),
+    specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = 11),
     "'pre_tunnel_states' must be a single positive integer. Limit of 10"
   )
 })

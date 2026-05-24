@@ -1,8 +1,6 @@
 test_that("consolidate_treatseqr_trace returns correct structure", {
-  # Create a minimal model specification
-  m_spec <- specify_m(n_cycles = 5, n_tunnels = 2, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = 1)
 
-  # Create transition probabilities
   tp_list <- list(
     state1 = list(
       state2 = rep(0.2, 5),
@@ -18,17 +16,13 @@ test_that("consolidate_treatseqr_trace returns correct structure", {
     )
   )
 
-  # Generate matrices and run extrapolation
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
 
-  # Define state names
   state_names <- c("state1", "state2", "state3", "dead")
 
-  # Run consolidation
   result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
 
-  # Check structure
   expect_type(result, "list")
   expect_named(result, c("t", "d"))
   expect_true(is.matrix(result$t))
@@ -36,7 +30,7 @@ test_that("consolidate_treatseqr_trace returns correct structure", {
 })
 
 test_that("consolidate_treatseqr_trace has correct dimensions", {
-  m_spec <- specify_m(n_cycles = 10, n_tunnels = 3, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = rep(10, 3), pre_tunnel_states = 1)
 
   tp_list <- list(
     s1 = list(
@@ -65,17 +59,19 @@ test_that("consolidate_treatseqr_trace has correct dimensions", {
 
   result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
 
-  # t matrix should have n_cycles + 1 rows (includes time 0)
-  expect_equal(nrow(result$t), m_spec$n_cycles + 1)
-  # d matrix should have n_cycles rows (no time 0)
-  expect_equal(nrow(result$d), m_spec$n_cycles)
+  # th = ncol(full_trace) - 1 = 10
+  th <- ncol(full_trace) - 1L
+  # t matrix should have th + 1 rows (includes time 0)
+  expect_equal(nrow(result$t), th + 1)
+  # d matrix should have th rows (no time 0)
+  expect_equal(nrow(result$d), th)
   # Both should have correct number of columns (states)
   expect_equal(ncol(result$t), length(state_names))
   expect_equal(ncol(result$d), length(state_names))
 })
 
 test_that("consolidate_treatseqr_trace column names are correct", {
-  m_spec <- specify_m(n_cycles = 3, n_tunnels = 1, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = c(3), pre_tunnel_states = 1)
 
   tp_list <- list(
     healthy = list(
@@ -98,7 +94,7 @@ test_that("consolidate_treatseqr_trace column names are correct", {
 })
 
 test_that("consolidate_treatseqr_trace t matrix rows sum to 1", {
-  m_spec <- specify_m(n_cycles = 8, n_tunnels = 2, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = rep(8, 2), pre_tunnel_states = 1)
 
   tp_list <- list(
     on_tx = list(
@@ -121,13 +117,12 @@ test_that("consolidate_treatseqr_trace t matrix rows sum to 1", {
 
   result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
 
-  # All rows in t matrix should sum to 1
   row_sums <- rowSums(result$t)
   expect_true(all(abs(row_sums - 1) < 1e-10))
 })
 
 test_that("consolidate_treatseqr_trace d matrix excludes time 0", {
-  m_spec <- specify_m(n_cycles = 5, n_tunnels = 2, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = 1)
 
   tp_list <- list(
     s1 = list(
@@ -153,15 +148,13 @@ test_that("consolidate_treatseqr_trace d matrix excludes time 0", {
   # d matrix should have one less row than t matrix (excludes time 0)
   expect_equal(nrow(result$d), nrow(result$t) - 1)
 
-  # d matrix is based on within-tunnel time, so it should be calculated differently
-  # than the t matrix. Just check it has valid probabilities
+  # d matrix is based on within-tunnel time, so check valid probabilities
   expect_true(all(result$d >= 0))
   expect_true(all(result$d <= 1))
 })
 
 test_that("consolidate_treatseqr_trace handles different numbers of tunnels", {
-  # Test with 3 tunnels instead of multiple pre-tunnel states
-  m_spec <- specify_m(n_cycles = 4, n_tunnels = 3, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = rep(4, 3), pre_tunnel_states = 1)
 
   tp_list <- list(
     s1 = list(
@@ -190,15 +183,16 @@ test_that("consolidate_treatseqr_trace handles different numbers of tunnels", {
 
   result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
 
-  # Check dimensions are correct with 3 tunnels
+  # th = ncol(full_trace) - 1 = 4
+  th <- ncol(full_trace) - 1L
   expect_equal(ncol(result$t), 5)
   expect_equal(ncol(result$d), 5)
-  expect_equal(nrow(result$t), m_spec$n_cycles + 1)
-  expect_equal(nrow(result$d), m_spec$n_cycles)
+  expect_equal(nrow(result$t), th + 1)
+  expect_equal(nrow(result$d), th)
 })
 
 test_that("consolidate_treatseqr_trace dead state accumulates over time", {
-  m_spec <- specify_m(n_cycles = 10, n_tunnels = 1, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = c(10), pre_tunnel_states = 1)
 
   tp_list <- list(
     alive = list(
@@ -216,19 +210,14 @@ test_that("consolidate_treatseqr_trace dead state accumulates over time", {
 
   result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
 
-  # Dead state should be monotonically increasing
   dead_col <- result$t[, "dead"]
   expect_true(all(diff(dead_col) >= 0))
-
-  # Dead state at time 0 should be 0
   expect_equal(unname(dead_col[1]), 0)
-
-  # Dead state should be positive after time 0
   expect_true(all(dead_col[-1] > 0))
 })
 
 test_that("consolidate_treatseqr_trace d matrix dead column is survival", {
-  m_spec <- specify_m(n_cycles = 6, n_tunnels = 1, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = c(6), pre_tunnel_states = 1)
 
   tp_list <- list(
     alive = list(
@@ -248,14 +237,14 @@ test_that("consolidate_treatseqr_trace d matrix dead column is survival", {
 
   # d matrix dead column should be 1 - dead proportion from t matrix
   # (survival, not cumulative death)
-  # trace_dead[-(th + 1)] means exclude the LAST element, not the first
-  # So it's survival for times 1:n_cycles (excluding time 0)
-  expected_survival <- 1 - result$t[1:m_spec$n_cycles, "dead"]
+  # th = ncol(full_trace) - 1 = 6
+  th <- ncol(full_trace) - 1L
+  expected_survival <- 1 - result$t[1:th, "dead"]
   expect_equal(unname(result$d[, "dead"]), unname(expected_survival))
 })
 
 test_that("consolidate_treatseqr_trace initial state starts at 1", {
-  m_spec <- specify_m(n_cycles = 5, n_tunnels = 1, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = c(5), pre_tunnel_states = 1)
 
   tp_list <- list(
     s1 = list(
@@ -273,8 +262,37 @@ test_that("consolidate_treatseqr_trace initial state starts at 1", {
 
   result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
 
-  # At time 0, all cohort should be in first state
   expect_equal(unname(result$t[1, "s1"]), 1)
   expect_equal(unname(result$t[1, "s2"]), 0)
   expect_equal(unname(result$t[1, "dead"]), 0)
+})
+
+test_that("consolidate_treatseqr_trace zero-pads d for short tunnel in variable-length spec", {
+  # Use a hand-crafted full_trace to test zero-padding in d without going
+  # through the full pipeline (which is blocked by validate_tp_source until
+  # variable-length TP support is added).
+  #
+  # Spec: tunnel_lengths = c(2, 4), pre_tunnels = 1
+  # matrix_size = 1 + 2 + 4 + 1 = 8
+  # tunnel_starts = c(2, 4), dead = 8
+  # th (from ncol(full_trace) - 1) = 4
+  m_spec <- specify_m(tunnel_lengths = c(2, 4), pre_tunnel_states = 1)
+
+  # Build a minimal full_trace (8 rows x 5 cols = t0:t4)
+  # All population starts in state 1 and stays there for simplicity
+  full_trace <- matrix(0, nrow = m_spec$matrix_size, ncol = 5)
+  full_trace[1, ] <- 1   # all in pre-tunnel state throughout
+  full_trace[m_spec$matrix_size, ] <- 0  # nobody dead
+
+  state_names <- c("pre", "tun1", "tun2", "dead")
+
+  result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
+
+  # th = 4
+  th <- ncol(full_trace) - 1L
+  expect_equal(nrow(result$d), th)
+
+  # d matrix should contain no NA values (short tunnel was zero-padded)
+  expect_false(anyNA(result$d))
+  expect_true(all(result$d >= 0))
 })

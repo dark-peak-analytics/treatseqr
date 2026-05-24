@@ -1,6 +1,6 @@
 test_that("generate_m_list returns correct structure and dimensions", {
   # Minimal valid model specification
-  m_spec <- specify_m(n_cycles = 2, n_tunnels = 2, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = c(2, 2), pre_tunnel_states = 1)
   tp_list <- list(
     state1 = list(
       state2 = rep(0.3, 2),
@@ -20,12 +20,13 @@ test_that("generate_m_list returns correct structure and dimensions", {
   expect_named(result, c("m1", "m2", "state_names"))
   expect_true(is.list(result$m1))
   expect_true(methods::is(result$m2, "sparseMatrix"))
-  expect_length(result$m1, m_spec$n_cycles)
+  # m1 length = th = max tunnel length = 2
+  expect_length(result$m1, 2)
   expect_equal(dim(result$m2), c(m_spec$matrix_size, m_spec$matrix_size))
 })
 
 test_that("generate_m_list throws error for invalid transition probabilities", {
-  m_spec <- specify_m(n_cycles = 2, n_tunnels = 2, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = c(2, 2), pre_tunnel_states = 1)
   # Invalid: probabilities sum > 1
   tp_list <- list(
     state1 = list(
@@ -41,7 +42,7 @@ test_that("generate_m_list throws error for invalid transition probabilities", {
 })
 
 test_that("generate_m_list m2 rows sum to 1", {
-  m_spec <- specify_m(n_cycles = 3, n_tunnels = 1, pre_tunnel_states = 1)
+  m_spec <- specify_m(tunnel_lengths = c(3), pre_tunnel_states = 1)
   tp_list <- list(
     s1 = list(s2 = rep(0.2, 3), die = rep(0.1, 3)),
     s2 = list(die = rep(0.3, 3))
