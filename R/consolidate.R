@@ -3,32 +3,39 @@
 
 #' Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks
 #'
-#' This function takes a full trace matrix from a health economic state transition model
-#' and consolidates it into summarized blocks for pre-tunnel, tunnel, and dead states.
-#' It returns two matrices: one with time-based (t) and one with difference-based (d) summaries.
+#' This function takes a full trace matrix from a health economic state
+#' transition model and consolidates it into summarized blocks for pre-tunnel,
+#' tunnel, and dead states. It returns two matrices: one with time-based (t) and
+#' one with difference-based (d) summaries.
 #'
-#' @param full_trace A matrix representing the full trace of state occupancies over time.
+#' @param full_trace A matrix representing the full trace of state occupancies
+#' over time.
 #' @param spec A list containing model specifications, including:
 #'   - pre_tunnels: Number of pre-tunnel states
 #'   - m1_ijx: Matrix with state indices and bounds
-#'   - n_cycles: Number of cycles (time steps)
-#' @param state_names A character vector of state names for labeling output matrices.
+#' @param state_names A character vector of state names for labeling output
+#' matrices.
 #'
 #' @return A list with two elements:
 #'   - t: Matrix of time-based state occupancies (rows: cycles, columns: states)
-#'   - d: Matrix of difference-based state occupancies (rows: cycles, columns: states)
+#'   - d: Matrix of difference-based state occupancies (rows: cycles, columns:
+#'   states)
 #'
 #' @details
 #' - Pre-tunnel blocks are summarized as single rows.
-#' - Tunnel blocks are summarized by summing across the appropriate rows for each tunnel.
+#' - Tunnel blocks are summarized by summing across the appropriate rows for
+#' each tunnel.
 #' - The dead block is taken as the last row of the trace.
-#' - The function is useful for cost-effectiveness modeling where tunnel states are present.
+#' - The function is useful for cost-effectiveness modeling where tunnel states
+#' are present.
 #'
 #' @export
 consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
   pre_tun <- spec$pre_tunnels
   bounds <- spec$m1_ijx[, "j"]
-  th <- spec$n_cycles
+
+  # th is trace columns less 1 for dead
+  th <- ncol(full_trace) - 1
   n_states <- nrow(spec$m1_ijx)
 
   # pre-tunnel blocks are just one row each, so just a sequence is fine:
@@ -43,9 +50,10 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
   # Generate the coordinate bounds for each tunnel block. This is the same when
   # summing across rows, or in columns restricting to rows.
   tun_blocks <- lapply(
-    bounds[tun_indices],
-    function(tunnel_start) {
-      c(tunnel_start, tunnel_start + th - 1)
+    seq_along(tun_indices),
+    function(k) {
+      tunnel_start <- bounds[tun_indices[k]]
+      c(tunnel_start, tunnel_start + spec$tunnel_lengths[k] - 1)
     }
   )
 
@@ -62,8 +70,9 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
   })
   trace_tun_d <- lapply(tun_blocks, function(tun_idx) {
     index <- seq(tun_idx[1], tun_idx[2])
-    rowSums(full_trace[index, ]) /
-      sum(full_trace[index[1], ])
+    d_vec <- rowSums(full_trace[index, ]) / sum(full_trace[index[1], ])
+    d_vec <- c(d_vec, rep(0, th - length(d_vec)))
+    d_vec
   })
 
   # return list with 2 matrices, one for t-based, one for d based:
@@ -76,6 +85,9 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
       state_names
     )
   )
+
+  # Note that this is flexible to fixed-duration tunnels
+
   d_mat <- matrix(
     c(
       trace_pre[-(th + 1)],
