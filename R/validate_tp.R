@@ -21,11 +21,12 @@
 #'
 #' @param tp_source A named list of lists containing transition probability
 #'   vectors. The structure must follow specific rules as described above.
+#' @param tunnel_lengths A numeric vector indicating the lengths of each tunnel.
 #'
 #' @return The sanitized `tp_source` list where all `NULL` entries have been
 #'   replaced with vectors of zeros of the correct length.
 #' @export
-validate_tp_source <- function(tp_source) {
+validate_tp_source <- function(tp_source, tunnel_lengths = NULL) {
   assertthat::assert_that(
     is.list(tp_source),
     !is.null(names(tp_source)),

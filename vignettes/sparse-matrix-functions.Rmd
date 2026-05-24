@@ -254,15 +254,15 @@ We know columns `r m_spec$matrix_size` is death because `m_spec$matrix_size` is
 matrix.  
 
 The next thing to note is that in each tunnel block after the first, the row
-indices increase by `r n_cycles`  (`n_cycles`), as do the column indices, but
-the number of "destination" states reduces by one. This is because the implicit
-assumption in this kind of model is that patients cannot return to a previous
-tunnel. However, it is possible to incorporate backwards transitions if desired
-by adding in **more vertical strips**. As of this version, this is not
-currently included, but it is be possible (and not difficult) to add it and the
-feature is planned. Such transitions would then allow conceptual models which
-have been incredibly useful in real HTA submissions in disease areas such as
-relapsing and remitting multiple sclerosis, where patients enter tunnels
+indices increase corresponding to the sizing of each tunnel, as do the column
+indices, but the number of "destination" states reduces by one. This is because
+the implicit assumption in this kind of model is that patients cannot return to
+a previous tunnel. However, it is possible to incorporate backwards transitions
+if desired by adding in **more vertical strips**. As of this version, this is
+not currently included, but it is be possible (and not difficult) to add it and
+the feature is planned. Such transitions would then allow conceptual models
+which have been incredibly useful in real HTA submissions in disease areas such
+as relapsing and remitting multiple sclerosis, where patients enter tunnels
 corresponding to relapses which can last up to a certain amount of time. From
 these tunnels, the relapse can end without permanent progression (i.e., going
 backwards), or with permanent progression (i.e., going forwards). 
@@ -430,34 +430,36 @@ and ensures that you are very carefully putting things together.
 
 ## A note on order of operations
 
-The last step before entering the data into `M` is to make sure that
-`valid_tp`, which is valid in and of itself, corresponds to the specification
-of `M`.  
+The last step before entering the data into M is to make sure that `valid_tp`,
+which is valid in and of itself, corresponds to the specification of `M`.
 
-Well, if we reverse the order of operations, we can make the process automatic
-by using `valid_tp` to tell `specify_m` the inputs it needs. These are:
+Well, if we reverse the order of operations, we can make the process more
+straightforward by using `valid_tp` to inform some of the inputs `specify_m` needs.
+These are:
 
-- `n_cycles`
-- `n_tunnels`
+- `tunnel_lengths`
 - `pre_tunnel_states`
 
-`n_cycles` can be derived from `valid_tp` because all 2nd level elements have
-the same length. However, the other two inputs `n_tunnels` and
-`pre_tunnel_states` must be determined by the user, as the structure of the data
-is identical whether or not a state is a pre-tunnel. There are the same amount
-of destination states, and the `tp` vectors have the same lengths, names and so
-on.   
+Unlike the old n_cycles parameter, tunnel_lengths cannot be derived
+automatically from the transition probability data, because different tunnels
+may have different lengths — that is a modelling choice, not something inferable
+from TP vector structure. The number of tunnels is not a separate argument; it
+is implicit in length(tunnel_lengths).
 
-Yet, it is still most robust to derive the validated `tp` data first, and then
-specify `M`, because during that, some additional validation of `n_tunnels` and
-`pre_tunnel_states` can be conducted. For instance, in this model framework,
-there must be at least one tunnel, and one pre-tunnel state.
+`pre_tunnel_states` must also be determined by the user, as the structure of the
+TP data alone does not distinguish pre-tunnel states from tunnel states. There
+are the same number of destination states, and the tp vectors have the same
+shapes and names regardless of whether a state is pre-tunnel or not.
+
+It is still most robust to validate the tp data first, and then specify `M`,
+because during validation some structural checks — such as requiring at least
+one tunnel and one pre-tunnel state — are conducted.
 
 In most oncology settings, only the first state can be a pre-tunnel state
 because the transition from e.g., off-treatment in first line to any subsequent
 state has an index date of discontinuation event for first line therapy, not
 baseline. However, there are feasibly use-cases for multiple pre-tunnel states.
-Yet for this example, **we say that only `on_1l` is a pre-tunnel state**.
+Yet for this example, we say that only on_1l is a pre-tunnel state.
 
 ```{r specify_m_from_valid_tp}
 m_spec <- specify_m(
@@ -777,9 +779,8 @@ to which state:
 - `pre_tunnels`: The first `pre_tunnels` rows in `trace` are 1 row/column each
 and these are states which have a basis in time of `t` not `d`, so are simply
 the appropriate row (e.g., `trace[1, ]` is the first health state over time).
-- Tunnels: Each tunnel has `n_cycles` rows/columns, and these can be summed to
-produce what we need. Note that we can do horizontal and vertical sums here -
-the bounds are just the transpose of each other.
+- Tunnels: each tunnel has rows/columns corresponding to specific sizing, and
+these can be summed to produce what we need.
 - Death: The last row/column is death, which is absorbing.
 
 
