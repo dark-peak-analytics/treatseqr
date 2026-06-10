@@ -173,7 +173,7 @@ Column sums confirm that `d = 3` is a true decision-tree node (sums to 1,
 leaving no residual probability of remaining in the surgery tunnel):
 
 ```{r decision_node_check}
-colSums(round(t(surgery_exit), 3))
+rowSums(round(t(surgery_exit), 3))
 ```
 
 This pattern — zeroing `p_stay` at the last tunnel cycle and distributing all
@@ -194,7 +194,7 @@ round(t(failed_exit), 3)
 
 ```{r holding_state_pstay}
 # Implied p_stay at each cycle of failed_surg:
-1 - colSums(round(t(failed_exit), 3))
+1 - rowSums(round(failed_exit, 3))
 ```
 
 Patients who have not exited `failed_surg` by `d = 2` remain there until going
