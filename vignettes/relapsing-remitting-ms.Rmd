@@ -1,0 +1,437 @@
+---
+title: "Backwards Transitions in Relapsing-Remitting Disease"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Backwards Transitions in Relapsing-Remitting Disease}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(treatseqr)
+```
+
+# Introduction
+
+This vignette demonstrates backwards transitions in `treatseqr` using a
+relapsing-remitting multiple sclerosis (RRMS) setting. In contrast to oncology
+treatment-sequence models — where disease progression is typically assumed
+irreversible — RRMS patients may experience relapses that resolve without
+accumulating permanent disability, returning to an earlier disease state. This
+is precisely the backwards-transition mechanism built into `treatseqr`.
+
+The model represents escalating levels of disease burden as a sequence of tunnel
+states. A brief model-entry pre-tunnel state (`newly_dx`) routes patients into
+`stage_1` — the minimal-disability, between-relapse state — which is itself
+modelled as a full-length tunnel. Modelling `stage_1` as a tunnel (rather than
+a pre-tunnel state) is what allows the backwards-transition mechanism to work: in
+`treatseqr`, transitions from within a tunnel back to an earlier state can only
+target other **tunnel** start positions, so any state that needs to *receive*
+backwards transitions must itself be a tunnel state.
+
+An additional benefit is clinical richness: the `d` dimension of `stage_1`
+tracks how long a patient has been continuously in the between-relapse state
+since their last relapse resolution. Patients who resolve from `stage_2` back to
+`stage_1` re-enter at `d = 1`, resetting this counter. To go beyond this point
+of sophistication essentially requires unlimited dimensionality to the
+transition probability matrix. In such cases (e.g., where a counter of how many
+times individuals have been to each state and for how long is needed), a
+microsimulation may be more appropriate than any kind of cohort model could ever
+realistically be.
+
+During each relapse tunnel, patients may:
+
+- **Resolve** (backwards transition) — return to the start of the previous
+  tunnel at any cycle `d = 1, 2, …, r_len`, not just at the end.
+- **Progress** (forward transition) — advance to the next relapse level, again
+  possible at any cycle during the relapse.
+- **Die** — small background mortality throughout.
+- **Remain in the relapse** — `p_stay > 0` at `d = 1` and `d = 2`; a
+  decision-tree node at `d = r_len` forces a clean exit for any patients who
+  have not yet resolved or progressed.
+
+Patients who reach the most severe stage enter a **secondary progressive**
+tunnel with no possibility of reversal, illustrating how `treatseqr` accommodates
+both reversible and irreversible disease within the same model.
+
+The five model states are:
+
+| State | Type | Tunnel length | Clinical meaning |
+|---|---|---|---|
+| `newly_dx` | Pre-tunnel | — | Model entry at RRMS diagnosis |
+| `stage_1` | Full-length tunnel | `th` | Minimal disability (EDSS 0–2); between relapses |
+| `stage_2` | Fixed-duration (DTN) | `r_len` | Active relapse, moderate disability (EDSS 3–4) |
+| `stage_3` | Fixed-duration (DTN) | `r_len` | Active relapse, severe disability (EDSS 5–6) |
+| `stage_4` | Full-length tunnel | `th` | Secondary progressive phase (EDSS 7+); irreversible |
+
+# Model specification
+
+```{r specify_m}
+r_len <- 3L
+th <- 40L
+
+m_spec <- specify_m(
+  tunnel_lengths    = c(th, r_len, r_len, th),
+  pre_tunnel_states = 1L
+)
+
+m_spec$matrix_size
+```
+
+The total matrix size is `r m_spec$matrix_size`: 1 pre-tunnel state + `r th` +
+3 + 3 + `r th` tunnel cycles + 1 death state.
+
+# Transition probabilities
+
+Backwards and forward transitions within the relapse tunnels are non-zero at
+every `d`, rising toward the decision-tree node at `d = r_len`. Destinations
+not listed are `NULL` and will be auto-filled as zero vectors by the validator.
+
+```{r define_tps}
+tp_source <- list(
+  # ------------------------------------------------------------------
+  # newly_dx (pre-tunnel): vectors of length th
+  #   nearly all patients enter stage_1 immediately after diagnosis;
+  #   small background mortality
+  # ------------------------------------------------------------------
+  newly_dx = list(
+    stage_1 = rep(0.97, th),
+    stage_2 = NULL,
+    stage_3 = NULL,
+    stage_4 = NULL,
+    die     = rep(0.01, th)
+    # implied p_stay = 0.02 every cycle
+  ),
+
+  # ------------------------------------------------------------------
+  # stage_1 (full-length, th cycles): minimal disability
+  #   low but ongoing relapse risk each cycle
+  # ------------------------------------------------------------------
+  stage_1 = list(
+    stage_2 = rep(0.06, th),
+    stage_3 = NULL,
+    stage_4 = NULL,
+    die     = rep(0.01, th)
+    # implied p_stay = 0.93 every cycle
+  ),
+
+  # ------------------------------------------------------------------
+  # stage_2 (fixed-duration, r_len cycles):
+  #   d = 1, 2 : resolution or progression possible but not certain
+  #              — p_stay > 0, most patients remain in the relapse
+  #   d = 3    : decision-tree node — p_stay = 0, all probability
+  #              allocated to resolution, progression, or death
+  #
+  #   stage_1 (backwards): relapse resolves without disability gain
+  #   stage_3 (forward):   relapse progresses to higher disability
+  # ------------------------------------------------------------------
+  stage_2 = list(
+    stage_1 = c(0.15, 0.20, 0.50), # backwards: rises each cycle
+    stage_3 = c(0.05, 0.08, 0.40), # forward:   rises each cycle
+    stage_4 = NULL,
+    die     = c(0.02, 0.02, 0.10)
+    # d=1 implied p_stay = 0.78
+    # d=2 implied p_stay = 0.70
+    # d=3 implied p_stay = 0.00  (decision-tree node)
+  ),
+
+  # ------------------------------------------------------------------
+  # stage_3 (fixed-duration, r_len cycles):
+  #   d = 1, 2 : partial resolution or progression possible
+  #   d = 3    : decision-tree node — p_stay = 0
+  #
+  #   stage_2 (backwards): partial resolution; returns to moderate relapse
+  #   stage_4 (forward):   enters secondary progressive phase
+  # ------------------------------------------------------------------
+  stage_3 = list(
+    stage_2 = c(0.10, 0.15, 0.35), # backwards: rises each cycle
+    stage_4 = c(0.03, 0.08, 0.50), # forward:   rises each cycle
+    die     = c(0.03, 0.03, 0.15)
+    # d=1 implied p_stay = 0.84
+    # d=2 implied p_stay = 0.74
+    # d=3 implied p_stay = 0.00  (decision-tree node)
+  ),
+
+  # ------------------------------------------------------------------
+  # stage_4 (full-length, th cycles): secondary progressive — no reversal
+  #   rising mortality reflects continued disease progression
+  # ------------------------------------------------------------------
+  stage_4 = list(
+    die = seq(0.05, 0.20, length.out = th)
+  )
+)
+```
+
+# Validating transition probabilities
+
+```{r validate}
+valid_tp <- validate_tp_source(
+  tp_source      = tp_source,
+  tunnel_lengths = c(th, r_len, r_len, th)
+)
+
+lobstr::tree(
+  rapply(valid_tp, function(x) round(x, 3), how = "list")
+)
+```
+
+The validator expands every state's inner list to the full canonical destination
+set. Destinations supplied as `NULL` or omitted entirely are filled with zero
+vectors of the appropriate length. For example, backwards slots not explicitly
+provided — such as `stage_3$stage_1` (two-step reversal, not modelled here) and
+`stage_2$stage_4` (skip-forward, not modelled) — are auto-added as zero vectors.
+
+# Early resolution and progression within relapse tunnels
+
+Because transition probabilities are non-zero at `d = 1` and `d = 2`, patients
+can exit the relapse tunnel before reaching its final cycle. We can inspect the
+full probability table at each `d`:
+
+```{r stage2_exit}
+# Probabilities out of stage_2 at each tunnel cycle d (rows = destinations):
+s2_exit <- do.call(rbind, lapply(valid_tp$stage_2, identity))
+rownames(s2_exit) <- names(valid_tp$stage_2)
+round(t(s2_exit), 3)
+```
+
+```{r stage2_pstay}
+# Implied p_stay at each cycle of stage_2:
+1 - rowSums(round(t(s2_exit), 3))
+```
+
+```{r stage3_exit}
+# Probabilities out of stage_3 at each tunnel cycle d:
+s3_exit <- do.call(rbind, lapply(valid_tp$stage_3, identity))
+rownames(s3_exit) <- names(valid_tp$stage_3)
+round(t(s3_exit), 3)
+```
+
+```{r stage3_pstay}
+# Implied p_stay at each cycle of stage_3:
+1 - rowSums(round(t(s3_exit), 3))
+```
+
+At `d = 1` and `d = 2` the row sums are less than 1, confirming that most
+patients remain in the relapse that cycle. The probabilities rise across `d`,
+reflecting increasing clinical pressure to resolve or progress as the relapse
+continues. At `d = r_len = 3`, the row sums are exactly 1 — the
+decision-tree node forces every remaining patient out of the relapse.
+
+```{r dtn_check}
+# Confirm decision-tree node: row sums at d = r_len must equal 1
+rowSums(round(t(s2_exit), 3))[r_len]
+rowSums(round(t(s3_exit), 3))[r_len]
+```
+
+This design is richer than a pure decision-tree-with-delay (where all
+probability mass sits only at the last cycle): genuine early exits occur at
+`d = 1` and `d = 2`, but the DTN at `d = 3` guarantees a clean, complete exit
+for any patients who have not yet resolved or progressed.
+
+# Progressive phase is one-way
+
+`stage_4` contains no backwards transitions. Patients who enter the secondary
+progressive phase remain there — the only exit is death.
+
+```{r stage4_tps}
+round(valid_tp$stage_4$die, 3)
+```
+
+This is a deliberate modelling choice reflecting the current clinical
+understanding that secondary progressive MS is irreversible. Note, however, that
+this is a constraint imposed by the modeller through the transition probabilities
+— not by `treatseqr` itself. A modeller working in a different disease area, or
+using a different assumption, could supply non-zero backwards transitions for
+`stage_4` without any changes to the model specification or the framework.
+
+# Generating M and extrapolating
+
+As with the other vignettes, use the function to generate our matrix list:
+
+```{r generate_m}
+m <- generate_m_list(
+  m_specification      = m_spec,
+  transition_prob_list = valid_tp,
+  first_state_name     = "newly_dx"
+)
+```
+
+Before extrapolating, it is instructive to visualise `m2` directly. In addition to
+the superdiagonal strips (patients advancing along tunnels) and rightward
+vertical strips (forward transitions to later tunnels), the relapse blocks
+contain leftward vertical strips — the backwards transitions. These are absent
+in the purely progressive models presented in the other vignettes.
+
+```{r plot_m2}
+m2_df <- as.data.frame(Matrix::summary(m$m2))
+
+# label each entry by source tunnel block
+s1_end <- 1L + th
+s2_end <- s1_end + r_len
+s3_end <- s2_end + r_len
+s4_end <- s3_end + th
+
+m2_df$source <- cut(
+  m2_df$i,
+  breaks = c(0L, s1_end, s2_end, s3_end, s4_end, s4_end + 1L),
+  labels = c("stage_1", "stage_2", "stage_3", "stage_4", "death")
+)
+
+ggplot2::ggplot(
+  m2_df,
+  ggplot2::aes(x = j, y = i, colour = source, alpha = x)
+) +
+  ggplot2::geom_point(size = 2) +
+  ggplot2::scale_y_reverse() +
+  ggplot2::scale_alpha_continuous(range = c(0.3, 1), name = "Probability") +
+  ggplot2::labs(
+    title    = "Sparsity pattern of m2",
+    subtitle = "Backwards strips appear to the left of each relapse block",
+    x        = "Destination (column j)",
+    y        = "Source (row i)",
+    colour   = "Source state"
+  ) +
+  ggplot2::theme_minimal()
+```
+
+In the `stage_2` block (rows `r th + 2`–`r th + 4`) the leftward strip at column
+2 represents resolution back to `stage_1`. In the `stage_3` block (rows
+`r th + 5`–`r th + 7`) the leftward strip at column `r th + 2` represents partial
+resolution back to `stage_2`. The `stage_1` block has no leftward strip — it is
+the first tunnel so there is no earlier tunnel to resolve into. The `stage_4`
+block similarly has no backwards strip, reflecting the one-way nature of
+secondary progressive disease. The alpha scale (opacity) encodes probability:
+within each relapse block the strips intensify toward `d = r_len` (the
+decision-tree node), visible as lighter points at early d and darker points at
+`d = 3`.
+
+Finally, we can extrapolate the trace:
+
+```{r extrapolate}
+trace <- extrapolate_treatseqr(m = m, spec = m_spec)
+```
+
+A quick sanity check — column sums of the trace should equal 1 throughout:
+
+```{r check_trace}
+colSums(trace)
+```
+
+# Consolidation and outputs
+
+Consolidate the expanded trace to something we're used to seeing in health
+economics:
+
+```{r consolidate}
+res <- consolidate_treatseqr_trace(
+  full_trace  = trace,
+  spec        = m_spec,
+  state_names = m$state_names
+)
+```
+
+## State populations over time (`t`)
+
+As with the other vignettes, we can plot the traces:
+
+```{r plot_t}
+graphics::matplot(
+  res$t,
+  type = "l", lty = 1,
+  xlab = "Cycle", ylab = "Population",
+  main = "State populations over absolute time"
+)
+graphics::legend(
+  "topright",
+  legend = colnames(res$t),
+  col    = seq_len(ncol(res$t)),
+  lty    = 1,
+  cex    = 0.8
+)
+```
+
+Several features of this trace are worth noting:
+
+- **`newly_dx`** drains rapidly — almost all patients have entered `stage_1` by
+  cycle 2.
+- **`stage_1` remains populated** throughout the horizon. Because patients can
+  resolve from `stage_2` back to `stage_1`, this state is continuously
+  replenished and never fully drains, unlike in a purely progressive model.
+- **`stage_2`** is also sustained longer than in a strictly forward model. The
+  feedback loop — patients moving `stage_1 → stage_2 → stage_1 → stage_2 → …`
+  — keeps replenishing the moderate-relapse population.
+- **`stage_4`** grows gradually as severe relapses progress to secondary
+  progressive disease; from there, the only exit is death.
+
+Note: you can experiment with longer time horizons to see what happens over a
+longer time period. To do this, just change `th` right at the start of this
+vignette and run through. The trace looks a bit more like "the norm" when you
+set it to `200`. The reason it is set to `r th` is so that the plot of `m2` is
+clearer!
+
+## Within-tunnel survival (`d`) and the feedback-loop problem
+
+The `d` output captures the population distribution across `d = 1, …` for each
+tunnel at each model cycle. In the absence of any re-entries into a tunnel, the
+`rowSums` of a tunnel's rows in the full trace matrix would give a clean
+within-tunnel survival curve.
+
+In this model, however, patients can **re-enter** both `stage_1` and `stage_2`
+via backwards transitions:
+
+- `stage_2 → stage_1` feeds patients back to `d = 1` of `stage_1`, mixing
+  re-entry patients with patients on their first visit.
+- `stage_3 → stage_2` feeds patients back to `d = 1` of `stage_2`, similarly
+  contaminating its `d = 1` slot.
+
+As a result, `res$d` for `stage_1` and `stage_2` accumulates contributions from
+multiple cohorts (first-entry and re-entries). However, unlike the case where
+patients are held at the end of tunnels, the baseline value in `d = 0` for a
+tunnel state is based on **total traffic** into the state. Consequently, the
+`d`-based survival curves are actually valid **but** are polluted by people
+entering the state at different points in wall time (`t`). Yet, because of the
+fundamental "clock-reset" assumption in this package, `t` has no effect on
+transitions in a tunnel state, meaning you *can* use these as within-state
+survival curves. Just be aware that the disjoin between `t` and `d` may have
+practical implications for mortality probabilities within the tunnels. The
+implicit assumption is that the mortality only depends on `d`, and not `t`,
+meaning that aging has no effect on them. This is another reason to jump to
+patient-level simulation modelling: if the model is further complicated by
+needing to capture some ever-growing `t`-based mortality rate, then the limit of
+our approach is exceeded and patient simulation is a more appropriate option. In
+the case whereby the mortality is likely to be higher in the tunnels than the
+general population, then our approach still provides a substantial
+simplification, at least from the perspective of the modeller (the statistics is
+still complex).
+
+```{r plot_d}
+graphics::matplot(
+  res$d,
+  type = "l", lty = 1,
+  xlab = "Cycles since tunnel entry", ylab = "Proportion remaining",
+  main = "Within-tunnel d, case including backwards transitions"
+)
+graphics::legend(
+  "topright",
+  legend = colnames(res$d),
+  col    = seq_len(ncol(res$d)),
+  lty    = 1,
+  cex    = 0.8
+)
+```
+
+
+## Expected time in state
+
+The total expected cycles spent in each state across the cohort:
+
+```{r expected_time}
+round(colSums(res$t), 2)
+```

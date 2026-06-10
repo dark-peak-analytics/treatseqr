@@ -287,8 +287,8 @@ of transition probabilities needed for every tunnel is the same. In this case it
 print(m_spec$m2_ijx[21:40, ])
 ```
 
-Similarly the third tunnel also has 20 rows, now including backwards strips to
-both tunnel 1 and tunnel 2:
+Similarly the third tunnel also has 20 rows, including backwards strips to both
+tunnel 1 and tunnel 2:
 
 ```{r m2_example_tunnel3}
 print(m_spec$m2_ijx[41:60, ])
