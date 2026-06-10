@@ -4,12 +4,12 @@
 \alias{specify_m}
 \title{Specify Matrix Indices and Size for Sequence Model with Tunnel States}
 \usage{
-specify_m(n_cycles, n_tunnels, pre_tunnel_states = 1)
+specify_m(tunnel_lengths, pre_tunnel_states = 1)
 }
 \arguments{
-\item{n_cycles}{Integer. Number of cycles in each tunnel (must be > 0).}
-
-\item{n_tunnels}{Integer. Number of tunnel state blocks (must be > 0).}
+\item{tunnel_lengths}{Integer vector. Length of each tunnel state block (one
+element per tunnel; all values must be positive integers). The number of
+tunnels is inferred from the length of this vector.}
 
 \item{pre_tunnel_states}{Integer. Number of pre-tunnel states before entering
 the first tunnel (default is 1, must be between 1 and 10).}
@@ -23,12 +23,14 @@ transitions.}
 transitions and death state.}
 \item{matrix_size}{Integer. The total number of states (rows/columns) in
 the transition matrix.}
+\item{tunnel_lengths}{The \code{tunnel_lengths} vector as supplied.}
+\item{pre_tunnels}{The \code{pre_tunnel_states} value as supplied.}
 }
 }
 \description{
 Computes the coordinate matrices for the main transition matrix of a sequence
-model with tunnel states, as well as the overall matrix size, given the
-number of cycles, tunnel states, and pre-tunnel states.
+model with tunnel states, as well as the overall matrix size, given a vector
+of tunnel lengths and the number of pre-tunnel states.
 }
 \details{
 The function generates coordinate matrices for efficiently populating a
@@ -36,8 +38,17 @@ sparse transition matrix for a sequence model with tunnel states. The
 \code{m1_ijx} matrix contains the coordinates for transitions from pre-tunnel
 states, while \code{m2_ijx} contains the coordinates for transitions within
 tunnel states and to the absorbing (death) state.
+
+Tunnels may have different lengths (variable-duration tunnels). The total
+matrix size is \code{pre_tunnel_states + sum(tunnel_lengths) + 1}.
 }
 \examples{
-specify_m(5, 2)
-specify_m(3, 3, pre_tunnel_states = 2)
+# Two tunnels of equal length (5 cycles each)
+specify_m(rep(5, 2))
+
+# Three tunnels of different lengths
+specify_m(c(5, 10, 15), pre_tunnel_states = 2)
+
+# Multiple pre-tunnel states
+specify_m(rep(3, 3), pre_tunnel_states = 2)
 }

@@ -4,11 +4,27 @@
 \alias{validate_tp_source}
 \title{Validate and Sanitize Transition Probability List for Sequence Modelling}
 \usage{
-validate_tp_source(tp_source)
+validate_tp_source(tp_source, tunnel_lengths = NULL, state_names = NULL)
 }
 \arguments{
 \item{tp_source}{A named list of lists containing transition probability
 vectors. The structure must follow specific rules as described above.}
+
+\item{tunnel_lengths}{An optional integer vector giving the length of each
+tunnel state block, in order (one element per tunnel). When \code{NULL}
+(default), all probability vectors must have the same length and the
+function behaves as in the uniform-tunnel case. When supplied, the number
+of pre-tunnel states is inferred as
+\code{length(tp_source) - length(tunnel_lengths)}, pre-tunnel TP vectors
+must all share a common length, and each tunnel \code{k}'s vectors must
+have length \code{tunnel_lengths[k]}.}
+
+\item{state_names}{An optional string vector which is used as the "ground
+truth" for validating the names of the inner lists in \code{tp_source}, in order.
+Both the names of the states and their ordering will use this if supplied. If
+not supplied, then state names AND ORDERING will be inferred from the names
+of \code{tp_source} itself.The last element must be the absorbing (death)
+state. All names present in \code{tp_source} must appear in state_names.}
 }
 \value{
 The sanitized \code{tp_source} list where all \code{NULL} entries have been
@@ -17,21 +33,28 @@ replaced with vectors of zeros of the correct length.
 \description{
 Validates that the transition probability list (\code{tp_source}) follows the
 strict structural rules required for sparse matrix extrapolation. It checks
-for reducing lengths, topological consistency of state names, consistent
-time horizons, and valid probability values. It also sanitizes the list by
-replacing \code{NULL} entries with zero vectors of the correct length.
+for topological structure, which can be "reducing" or "uniform", consistency
+of state names, consistent time horizons, and valid probability values. It
+also sanitizes the list by replacing \code{NULL} entries with zero vectors of the
+correct length, respecting fixed-duration (rather than time-horizon length)
+tunnels if they are included.
 }
 \details{
 Specifically, this function ensures:
 \itemize{
-\item The list lengths must reduce by 1 sequentially (e.g., 5, 4, 3, 2,
-1).
-\item The names of the inner lists must be topologically consistent
-(subset rule).
-\item All probability vectors must have the same length (number of
-cycles).
+\item All inner lists are expanded to a uniform destination set (the
+canonical set) in canonical order. Missing destinations are inserted as
+NULL, which are subsequently replaced with zero vectors respecting
+\code{tunnel_lengths}.
+\item If state_names is supplied, it defines the canonical set and order.
+Otherwise it is inferred from tp_source.
+\item All probability vectors must have consistent lengths (see
+\code{tunnel_lengths} below).
 \item Probabilities must be non-negative and sum to <= 1 (row-wise).
 \item Any \code{NULL} transition vectors are replaced with numeric vectors of
 zeros of the correct length.
+\item A warning is emitted if a state's own name appears as a destination
+with a non-zero value, since p_stay is normally computed as 1 − sum(other
+transitions).
 }
 }

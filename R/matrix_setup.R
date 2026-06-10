@@ -36,7 +36,7 @@
 #' specify_m(rep(5, 2))
 #'
 #' # Three tunnels of different lengths
-#' specify_m(c(3, 5, 2))
+#' specify_m(c(5, 10, 15), pre_tunnel_states = 2)
 #'
 #' # Multiple pre-tunnel states
 #' specify_m(rep(3, 3), pre_tunnel_states = 2)
@@ -120,8 +120,12 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
   # forward). Backwards strips default to 0 and are filtered at population
   # stage if unused. The death block entry is just itself (absorbing state).
   tun_topleft <- lapply(seq_along(tun_j), function(i) {
-    if (i == length(tun_j)) tun_j[i]   # death: just itself
-    else tun_j[-i]                      # all other tunnel starts + death
+    if (i == length(tun_j)) {
+      # death: just itself
+      tun_j[i]
+    } else {
+      tun_j[-i]
+    } # all other tunnel starts + death
   })
 
   # we can cycle through the above to generate the i,j,x for m2. Note that in

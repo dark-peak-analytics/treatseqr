@@ -9,13 +9,15 @@ generate the sparce matrices required to extrapolate the sequencing model}
 generate_m_list(
   m_specification,
   transition_prob_list,
-  first_state_name = "initial"
+  first_state_name = "initial",
+  state_names = NULL
 )
 }
 \arguments{
-\item{m_specification}{A list containing model parameters, including:
+\item{m_specification}{A list containing model parameters, as returned by
+\code{specify_m()}. Required fields:
 \itemize{
-\item n_cycles: Number of model cycles.
+\item tunnel_lengths: Integer vector of per-tunnel cycle counts.
 \item pre_tunnels: Number of pre-tunnel states.
 \item matrix_size: Size of the transition matrix.
 \item m1_ijx: Coordinate matrix for m1.
@@ -27,6 +29,14 @@ state.}
 
 \item{first_state_name}{A character string naming the initial (pre-tunnel)
 state. Defaults to \code{"initial"}.}
+
+\item{state_names}{An optional string vector which is used as the "ground
+truth" for validating the names of the inner lists in \code{tp_source}, in order.
+Both the names of the states and their ordering will use this if supplied. If
+not supplied, then state names AND ORDERING will be inferred from the names
+of \code{transition_prob_list} itself.The last element must be the absorbing
+(death) state. All names present in \code{transition_prob_list} must appear
+in state_names.}
 }
 \value{
 A list with two elements:
@@ -52,5 +62,9 @@ transition probabilities.
 The function validates the transition probability list, splits it into
 pre-tunnel and tunnel components, and constructs the corresponding sparse
 matrices. It ensures that row sums are appropriate and asserts that the
-tunnel matrix rows sum to 1.
+tunnel matrix rows sum to 1. Note that it filters out zero probabilities
+before entering them into the sparse matrices. This avoids those values being
+put into the matrix and then used in the matrix multiplications, which would
+ultimately always result in values of 0 being propagated. This then has a
+computational gain for no cost.
 }
