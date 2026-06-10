@@ -192,7 +192,7 @@ they all add up to 1 and the probability of staying in the tunnel is zero).
 The eagle-eyed among you may have seen that the function `specify_m` produces
 some probabilities on the diagonals:
 
-```{r m2_example_first_20}
+```{r m2_example_check}
 print(m_spec$m2_ijx[which(m_spec$m2_ijx[, 1] == m_spec$m2_ijx[, 2]), ])
 ```
 
@@ -594,7 +594,7 @@ If you want to check that all rows sum to 1 you can do things like this:
 are exactly 1, like this:
 
 ```{r print_rowsums}
-rowSums(m$m2)
+Matrix::rowSums(m$m2)
 ```
 
 
