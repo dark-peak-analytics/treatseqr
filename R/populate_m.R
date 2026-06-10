@@ -24,6 +24,13 @@
 #' state.
 #' @param first_state_name A character string naming the initial (pre-tunnel)
 #' state. Defaults to `"initial"`.
+#' @param state_names An optional string vector which is used as the "ground
+#' truth" for validating the names of the inner lists in `tp_source`, in order.
+#' Both the names of the states and their ordering will use this if supplied. If
+#' not supplied, then state names AND ORDERING will be inferred from the names
+#' of \code{transition_prob_list} itself.The last element must be the absorbing
+#' (death) state. All names present in \code{transition_prob_list} must appear
+#' in state_names.
 #'
 #' @return A list with two elements:
 #'   - m1: A list of sparse matrices (one per cycle) for pre-tunnel states.
@@ -46,26 +53,33 @@
 generate_m_list <- function(
   m_specification,
   transition_prob_list,
-  first_state_name = "initial"
+  first_state_name = "initial",
+  state_names = NULL
 ) {
   # validate the transition probability source list.
   # This will return a valid list or an error.
-  valid_tp <- validate_tp_source(transition_prob_list, m_specification$tunnel_lengths)
-  state_names <- rapply(valid_tp, function(x) 1, how = "list")[[1]] |>
-    unlist() |>
-    names()
-  state_names <- c(first_state_name, state_names)
+  valid_tp <- validate_tp_source(
+    tp_source = transition_prob_list,
+    tunnel_lengths = m_specification$tunnel_lengths,
+    state_names = state_names
+  )
+  # cover off if the user wants the state_names derivation to be automatic
+  if (is.null(state_names)) {
+    state_names <- rapply(valid_tp, function(x) 1, how = "list")[[1]] |>
+      unlist() |>
+      names()
+    state_names <- c(first_state_name, state_names)
+  }
 
-  # the time horizon must be the longest of the pre-tunnel state probs because
-  # these are needed for every cycle in the model, so the tunnel lengths aren't
-  # even needed:
-
-  # some useful variables to use throughout the funciton
+  # time horizon must be the length of the pre-tunnels. At least 1 pre-tunnel:
   th <- max(unlist(lapply(transition_prob_list[[1]], length)))
+
+  # Other important inputs
   pre_tun_states <- m_specification$pre_tunnels
   n_states <- length(valid_tp)
   tunnels <- n_states - pre_tun_states - 1
   matrix_size <- m_specification$matrix_size
+  pre_tun_names <- names(valid_tp)[seq_len(pre_tun_states)]
 
   # coordinates for m1 and m2:
   m1_ijx <- m_specification$m1_ijx
@@ -75,14 +89,10 @@ generate_m_list <- function(
   # bits of transition_prob_list. These go into m1
   tp_pre_tun <- valid_tp[1:pre_tun_states]
 
-  # all states are tunnels after enteirng the sequence. these all go into m2
+  # all states are tunnels after entering the sequence. These all go into m2
   tp_tun <- valid_tp[(pre_tun_states + 1):(n_states)]
 
-  # Now that we have done this, we know that the list of transition
-  # probabilities that have been supplied will fit into m1 and m2 correctly, and
-  # that the rowSums of the resulting matrix are appropriate prior to
-  # calculating the super-diagonal (1) elements for tunnel states
-
+  # TPs will fit into m1 and m2 now. Compute p_stay for each state.
   m1_list <- lapply(seq_len(th), function(model_cycle) {
     coord <- m1_ijx
     x_values <- lapply(seq_len(pre_tun_states), function(state_index) {
@@ -111,12 +121,17 @@ generate_m_list <- function(
   # have already validated the transition probability list
   x_m2 <- unlist(
     use.names = FALSE,
-    lapply(tp_tun, function(tunnel_state) {
-      # in each tunnel state, add the prob of staying first and then return
-      # collapsed list:
-      p_stay <- 1 - Reduce(`+`, tunnel_state)
-      tunnel_state <- c(list(p_stay = p_stay), tunnel_state)
-      unlist(tunnel_state, use.names = FALSE)
+    lapply(seq_along(tp_tun), function(tunnel) {
+      self_name <- names(tp_tun)[tunnel]
+      state_dests <- tp_tun[[tunnel]]
+      # Exclude self (p_stay computed as complement) and pre-tunnel destinations
+      # (no m2 coordinate slots exist for pre-tunnel columns)
+      keep_names <- names(state_dests)[
+        !names(state_dests) %in% c(pre_tun_names, self_name)
+      ]
+      ordered_dests <- state_dests[keep_names]
+      p_stay <- 1 - Reduce(`+`, ordered_dests)
+      unlist(c(list(p_stay = p_stay), ordered_dests), use.names = FALSE)
     })
   )
 
