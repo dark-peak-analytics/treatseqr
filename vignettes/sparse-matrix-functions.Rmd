@@ -360,21 +360,20 @@ This has some important features:
 1. The first level elements are health states
 2. The first level elements are in order, going from first to last tunnel
 3. Each first level element contains transition probabilities to all other
-   subsequent tunnels, even if zero probability (these can be NULL but must
-exist to use the validator function). This means length goes down by 1 for each
-successive tunnel
-4. element wise sums of everything in each 1st level element (i.e., each health
-   state) are all $\le 1$
-5. the names of the elements all correspond to each other appropriately, no
+   tunnels and the pre-tunnels (these can be excluded if not needed)
+4. Element wise sums of everything in each 1st level element (i.e., each health
+   state) are all $\le 1$ such that the rows still sum to 1.
+5. The names of the elements all correspond to each other appropriately, no
    differences or spelling mistakes are allowed!
 
 When we validate against these rules, the function returns us an object that can
-be used to populate `m1` and `m2` (in this case the same as the data going in):
+be used to populate `m1` and `m2`:
 
 ```{r validate_transition_probabilities}
 valid_tp <- validate_tp_source(
   tp_source = tp_source,
-  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L)
+  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L),
+  state_names = c(names(tp_source), "die")
 )
 lobstr::tree(
   rapply(valid_tp, function(x) round(x, 2), how = "list")
@@ -429,17 +428,16 @@ compared to:
 # Fills in the blanks if they are NULLs
 valid_tp <- validate_tp_source(
   tp_source = tp_source,
-  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L)
+  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L),
+  state_names = c(names(tp_source), "die")
 )
 lobstr::tree(
   rapply(valid_tp, function(x) round(x, 2), how = "list")
 )
 ```
 
-
-However, the function will give you an error if you miss the elements out
-completely. This prevents any kind of corner-cutting when specifying the model
-and ensures that you are very carefully putting things together.
+Missing destination names within an inner list are auto-added as 0. Omitting an
+entire 1st-level element (a whole state) will return an error.
 
 
 ## A note on order of operations
