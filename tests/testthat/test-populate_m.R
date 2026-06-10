@@ -54,3 +54,74 @@ test_that("generate_m_list m2 rows sum to 1", {
   row_sums <- Matrix::rowSums(m2[2:nrow(m2), ])
   expect_true(all(abs(row_sums - 1) < 1e-10))
 })
+
+# Backwards transition tests
+test_that("generate_m_list handles non-zero backwards pre-tunnel transition", {
+  # 2 pre-tunnel states, 2 tunnels of length 3.
+  # pre2 has a non-zero backwards transition to pre1.
+  th <- 3
+  m_spec <- specify_m(tunnel_lengths = rep(th, 2), pre_tunnel_states = 2)
+
+  tp <- list(
+    pre1 = list(
+      pre2 = rep(0.05, th),
+      tun1 = rep(0.10, th),
+      tun2 = rep(0.05, th),
+      die = rep(0.02, th)
+    ),
+    pre2 = list(
+      pre1 = rep(0.03, th), # backwards pre-tunnel transition
+      tun1 = rep(0.10, th),
+      tun2 = rep(0.05, th),
+      die = rep(0.02, th)
+    ),
+    tun1 = list(tun2 = rep(0.15, th), die = rep(0.10, th)),
+    tun2 = list(die = rep(0.20, th))
+  )
+
+  result <- generate_m_list(m_spec, tp, first_state_name = "pre1")
+
+  # All m1 rows sum to 1 across all model cycles
+  m1_row_sums <- unlist(lapply(result$m1, Matrix::rowSums))
+  expect_true(all(abs(m1_row_sums - 1) < 1e-10))
+
+  # m2 tunnel + death rows sum to 1
+  m2_row_sums <- Matrix::rowSums(result$m2[
+    (m_spec$pre_tunnels + 1):nrow(result$m2),
+  ])
+  expect_true(all(abs(m2_row_sums - 1) < 1e-10))
+
+  # The backwards transition from pre2 (row 2) to pre1 (col 1) is 0.03
+  expect_equal(as.numeric(result$m1[[1]][2, 1]), 0.03)
+})
+
+test_that("generate_m_list handles non-zero backwards tunnel transition", {
+  # 1 pre-tunnel, 2 tunnels of length 3.
+  # tun2 has a non-zero backwards transition to tun1.
+  # tunnel_starts: tun1=col 2, tun2=col 5; death=col 8
+  th <- 3
+  m_spec <- specify_m(tunnel_lengths = rep(th, 2), pre_tunnel_states = 1)
+
+  tp <- list(
+    pre = list(tun1 = rep(0.10, th), tun2 = rep(0.05, th), die = rep(0.02, th)),
+    tun1 = list(tun2 = rep(0.15, th), die = rep(0.10, th)),
+    tun2 = list(
+      tun1 = rep(0.05, th), # backwards tunnel transition
+      die = rep(0.20, th)
+    )
+  )
+
+  result <- generate_m_list(m_spec, tp, first_state_name = "pre")
+
+  # m2 tunnel + death rows sum to 1
+  m2_row_sums <- Matrix::rowSums(result$m2[
+    (m_spec$pre_tunnels + 1):nrow(result$m2),
+  ])
+  expect_true(all(abs(m2_row_sums - 1) < 1e-10))
+
+  # tun2 occupies rows 5:7. Each should have a non-zero entry at col 2 (tun1 start)
+  # with value 0.05 (the backwards transition probability)
+  expect_equal(as.numeric(result$m2[5, 2]), 0.05)
+  expect_equal(as.numeric(result$m2[6, 2]), 0.05)
+  expect_equal(as.numeric(result$m2[7, 2]), 0.05)
+})
