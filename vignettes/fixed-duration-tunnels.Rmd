@@ -154,8 +154,8 @@ lobstr::tree(
 The NULL entries for `on_trt$failed_surg` and `on_trt$responder` have been
 replaced with zero vectors of length th, and `failed_surg$responder` filled with
 zeros of length 2. In addition, the validator expands every state's destination
-set to the full canonical set — backwards slots (e.g. `surgery$on_trt`,
-`responder$surgery`) are auto-added as zero vectors.
+set to the full canonical set — backwards slots (e.g. `responder$surgery`,
+`failed_surg$surgery`) are auto-added as zero vectors.
 
 # The decision-tree node at the end of `surgery`
 

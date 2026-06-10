@@ -23,8 +23,13 @@ library(treatseqr)
 This vignette runs through the process of setting up and extrapolating a
 sequencing model allowing patients to "skip over" tunnels (e.g. transition from
 the first tunnel directly to the 3rd), and also to "skip back" to any previous
-tunnel, or even the pre-tunnel states (e.g., from the 2nd tunnel back to the
-first, or even before the tunnel sequence starts). 
+tunnel (e.g., from the 2nd tunnel back to the first). For technical reasons
+(wall time vs sojourn time), backwards transitions to pre-tunnel states are not
+supported. To do this, it is more appropriate to use a microsimulation that
+tracks how many times individual patients have attended a previous state, and
+for how long. Without substantially complicating our approach, this can't be
+done with simple matrices whilst balancing computational demands (to our
+knowledge).
 
 This is accomplished by creating a sparse transition probability matrix (TPM),
 populated with transitions in square "blocks" of size equal to the time horizon
