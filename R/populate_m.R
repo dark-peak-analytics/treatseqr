@@ -77,7 +77,6 @@ generate_m_list <- function(
   # Other important inputs
   pre_tun_states <- m_specification$pre_tunnels
   n_states <- length(valid_tp)
-  tunnels <- n_states - pre_tun_states - 1
   matrix_size <- m_specification$matrix_size
   pre_tun_names <- names(valid_tp)[seq_len(pre_tun_states)]
 
