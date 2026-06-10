@@ -132,34 +132,8 @@ validate_tp_source <- function(
     }
   )
 
-  # Name check: names of each state must be a subset of the previous state's
-  # names. Compute all pairwise setdiffs at once, then report the first
-  # violation.
-  assertthat::assert_that(
-    all(vapply(tp_source, function(x) !is.null(names(x)), logical(1L))),
-    msg = "All inner lists in tp_source must be named"
-  )
-
-  missing_names <- Map(
-    function(curr, nxt) setdiff(names(nxt), names(curr)),
-    tp_source[-n_states],
-    tp_source[-1L]
-  )
-  violation_idx <- which(lengths(missing_names) > 0L)
-  if (length(violation_idx) > 0L) {
-    i <- violation_idx[1L]
-    stop(sprintf(
-      "Topology error: State '%s' contains transitions to {%s} which are not present in the previous state '%s'.",
-      names(tp_source)[i + 1L],
-      paste(missing_names[[i]], collapse = ", "),
-      names(tp_source)[i]
-    ))
-  }
-
-  # ------------------------------------------------------------------
-  # Determine expected vector lengths per state
-  # ------------------------------------------------------------------
-
+  # Determine expected vector lengths per state. respects tunnel_lengths if
+  # supplied. Otherwise all are assumed to be time horizon length.
   if (is.null(tunnel_lengths)) {
     # Uniform case: all vectors must share a single common length. Infer it
     # from the first non-null, non-empty vector.
@@ -207,10 +181,7 @@ validate_tp_source <- function(
     expected_vec_lengths <- c(rep(th, pre_tunnels), tunnel_lengths)
   }
 
-  # ------------------------------------------------------------------
   # Sanitize: validate lengths/values and replace NULLs
-  # ------------------------------------------------------------------
-
   sanitized_tp <- lapply(seq_along(tp_source), function(state_idx) {
     state_name <- names(tp_source)[state_idx]
     state_list <- tp_source[[state_idx]]
