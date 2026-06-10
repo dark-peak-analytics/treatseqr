@@ -109,18 +109,22 @@ test_that("specify_m works for multiple pre-tunnel states", {
   result <- specify_m(tunnel_lengths = rep(10, 3), pre_tunnel_states = 10)
 
   expect_equal(result$pre_tunnels, 10)
-  expect_equal(nrow(result$m1_ijx), 95)
+  # Uniform: every pre-tunnel state has the same destination count
+  # 10 pre-tunnel states * (10 pre-tunnel + 3 tunnels + 1 death) = 140
+  expect_equal(nrow(result$m1_ijx), 140)
 
-  # The last pre-tunnel state (row 10) should not have any pre-tunnel
-  # transitions except to itself and to tunnels/death
-  last_pre_state_transitions <- result$m1_ijx[result$m1_ijx[, "i"] == 10, "j"]
+  # The last pre-tunnel state (row 10) has coordinate slots for all earlier
+  # pre-tunnel states (backwards transitions). These default to 0 and are
+  # filtered at population stage if unused.
+  last_pre_state_j <- result$m1_ijx[result$m1_ijx[, "i"] == 10, "j"]
 
   expect_true(
-    all(last_pre_state_transitions >= 10),
-    label = paste0(
-      "The last pre-tunnel state should not have any transitions to ",
-      "previous pre-tunnel states (only to itself, tunnels, or death)."
-    )
+    any(last_pre_state_j < 10),
+    label = "Last pre-tunnel state should have backwards coordinate slots for earlier pre-tunnel states"
+  )
+  expect_true(
+    all(seq_len(9) %in% last_pre_state_j),
+    label = "All pre-tunnel indices 1:9 should appear in last pre-tunnel state's j values"
   )
 })
 
@@ -132,9 +136,42 @@ test_that("specify_m works for large valid input", {
     result$m1_ijx,
     structure(
       c(
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 2, 102, 202, 302, 402, 502, 602, 702, 802, 902, 1002,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        102,
+        202,
+        302,
+        402,
+        502,
+        602,
+        702,
+        802,
+        902,
+        1002,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
       ),
       dim = c(12L, 3L),
       dimnames = list(NULL, c("i", "j", "x"))
