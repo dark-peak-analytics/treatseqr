@@ -69,7 +69,7 @@ The total matrix size is `r m_spec$matrix_size`: 1 pre-tunnel state + 3 + 2 +
 
 The transition probability source list must follow the standard `treatseqr`
 conventions: states listed in sequence order; each state contains transition
-probability vectors to all subsequent states (or `NULL` for structural zeros).
+probability vectors to all other states (or `NULL`/omit for structural zeros).
 With variable-length tunnels, each vector must match the length of the
 **source** state's tunnel (or the pre-tunnel horizon `th` for `on_trt`).
 
@@ -151,9 +151,11 @@ lobstr::tree(
 )
 ```
 
-The `NULL` entries for `on_trt$failed_surg` and `on_trt$responder` have been
-replaced with zero vectors of length `th`. Similarly, `failed_surg$responder`
-has been filled with zeros of length 2.
+The NULL entries for `on_trt$failed_surg` and `on_trt$responder` have been
+replaced with zero vectors of length th, and `failed_surg$responder` filled with
+zeros of length 2. In addition, the validator expands every state's destination
+set to the full canonical set — backwards slots (e.g. `surgery$on_trt`,
+`responder$surgery`) are auto-added as zero vectors.
 
 # The decision-tree node at the end of `surgery`
 
@@ -224,7 +226,7 @@ A quick sanity check — column sums of the trace should equal 1 throughout
 (all population accounted for):
 
 ```{r check_trace}
-round(colSums(trace), 6)
+colSums(trace)
 ```
 
 # Consolidation and outputs
@@ -259,7 +261,16 @@ The `failed_surg` population decays slowly compared with `surgery` because of
 the holding state — patients continue to accumulate at `d = 2` across many
 cycles before eventually dying or transitioning to palliative.
 
-## Within-tunnel survival (`d`)
+## Within-tunnel survival (`d`) no longer works in this setting!
+
+As mentioned in the documentation, the `d` output is only meaningful when
+patients cannot accumulate inside of one `d` for one tunnel state. In this
+"holding pattern" conceptual model (which is somewhat of an edge-case), you can
+no longer derive within-tunnel survival curves because the `d` dimension is no
+longer a pure measure of time spent in the state. The same is also technically
+true (but less pronounced) in the setting whereby a patient can loop back into a
+previous tunnel state (e.g., a relapse followed by non-progression back to the
+previous tunnel).
 
 ```{r plot_d}
 graphics::matplot(
@@ -282,6 +293,15 @@ The `surgery` within-tunnel survival curve drops sharply to zero at `d = 3`
 much slower tail as patients accumulate in the holding state at `d = 2`. The
 full-length tunnels (`responder`, `palliative`) display smoother declines
 reflecting their per-cycle mortality rates.
+
+Because this structure is a **strictly progressive** structure not allowing
+patients to move back to previous tunnels, the only violation here is
+`failed_surg`, because patients are accumulating at `d = 2` and thus `d` is no
+longer a pure measure of time spent in the state. In a more complex model with
+loops back to previous tunnels, multiple states could violate this assumption,
+but the violation would be harder to see. this is because it may be much more
+gradual and smooth, depending on the probability each cycle for patients to loop
+back to a previous tunnel.
 
 ## Expected time in state
 
