@@ -65,10 +65,10 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
   # staying in pre-tunnel states:
   pt_i <- seq_len(pre_tunnel_states)
 
-  # number of destinations from the first health state (pre-tunnel)
+  # number of destinations from each pre-tunnel state (uniform: all pre-tunnel
+  # states have the same destination set — self, all other pre-tunnel states,
+  # all tunnel starts, and death):
   n_dest_first <- n_tunnels + pre_tunnel_states + 1
-  n_dest_last_non_tunnel <- n_dest_first - pre_tunnel_states + 1
-  n_dest <- n_dest_first:n_dest_last_non_tunnel
 
   # the tunnels are different sizes, so compute the start points for each.
   # this can be done by taking n(pre-tunnel), then adding up the sizing of all
@@ -80,16 +80,17 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
 
   tun_j <- c(tunnel_starts, dead_rowcol)
 
-  # rows for m1. Note each successive pre-tunnel has one less "place to go".
-  # This is relatively simple to derive:
+  # rows for m1. Every pre-tunnel state has the same number of destinations
+  # (uniform). Backwards pre-tunnel coordinates are included here; they default
+  # to 0 and are filtered out at the matrix population stage if not used.
   m1_i <- rep(
     seq_len(pre_tunnel_states),
-    times = n_dest
+    each = n_dest_first
   )
 
-  # The columns are more involved. essentially columns to move forward to
-  # another state, and then the set of tunnel "beginnings", plus dead for each
-  # pre-tunnel.
+  # The columns: self first (maps to p_stay in populate_m), then all other
+  # pre-tunnel states in index order (backwards then forwards), then all tunnel
+  # starts, then death.
   m1_ijx <- Reduce(
     x = pt_i,
     init = matrix(
@@ -101,8 +102,11 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
       # pull out the relevant rows of the coordinate matrix for this pre-tunnel
       relevant_rows <- which(coord_mat[, "i"] == pre_tun_number)
 
-      # identify the movements patients can make for the pre-tunnel states
-      pre_tun_moves <- pre_tun_number:pre_tunnel_states
+      # self first, then all other pre-tunnel states in index order, then tunnels
+      pre_tun_moves <- c(
+        pre_tun_number,
+        setdiff(seq_len(pre_tunnel_states), pre_tun_number)
+      )
       j_vals <- c(pre_tun_moves, tun_j)
       coord_mat[relevant_rows, "j"] <- j_vals
       coord_mat
@@ -111,10 +115,13 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
 
   # now m2, which is for the successive tunnel states.
 
-  # the top left column of each tunnel block, with the column index for the
-  # vertical transitions to subsequent tunnel states, plus death
+  # the column indices for the vertical strips in each tunnel block.
+  # Each tunnel block gets strips for ALL other tunnels + death (not just
+  # forward). Backwards strips default to 0 and are filtered at population
+  # stage if unused. The death block entry is just itself (absorbing state).
   tun_topleft <- lapply(seq_along(tun_j), function(i) {
-    tun_j[i:length(tun_j)]
+    if (i == length(tun_j)) tun_j[i]   # death: just itself
+    else tun_j[-i]                      # all other tunnel starts + death
   })
 
   # we can cycle through the above to generate the i,j,x for m2. Note that in
@@ -149,8 +156,9 @@ specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
         # exit as 1 themselves instead of it being forced by the function.
         tun_sdiag_j[tun_len] <- tun_sdiag_i[tun_len]
 
-        # rest of the transitions are vertically arranged:
-        vertical_strips <- block[-1]
+        # vertical strips for all other tunnels + death. tun_topleft already
+        # excludes self, so no [-1] needed here.
+        vertical_strips <- block
 
         # row indices are the same as for the superdiagonals:
         tun_vert_i <- rep(tun_sdiag_i, length(vertical_strips))
