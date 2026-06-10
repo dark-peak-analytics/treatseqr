@@ -22,7 +22,9 @@ library(treatseqr)
 
 This vignette runs through the process of setting up and extrapolating a
 sequencing model allowing patients to "skip over" tunnels (e.g. transition from
-the first tunnel directly to the 3rd).  
+the first tunnel directly to the 3rd), and also to "skip back" to any previous
+tunnel, or even the pre-tunnel states (e.g., from the 2nd tunnel back to the
+first, or even before the tunnel sequence starts). 
 
 This is accomplished by creating a sparse transition probability matrix (TPM),
 populated with transitions in square "blocks" of size equal to the time horizon
@@ -44,13 +46,14 @@ the probability of remaining in the first tunnel after one cycle inside is
 positioned in 2,3, which is the probability of moving from cycle 1 to cycle 2
 of the first tunnel.  
 
-Horizontally to the right of the superdiagonal elements are a series of
-vertically arranged transition probabilities. These are the probabilities of a
-patient transitioning to the _beginning_ of a subsequent tunnel. For instance,
-in the first tunnel, the probability of moving from cycle 1 of tunnel 1 to
-cycle 1 of tunnel 3 would be positioned in row 2, but in the same column as the
-first row of the 3rd tunnel. During matrix multiplication, those patients then
-"move" to the beginning of tunnel 3.  
+On either side of the superdiagonal elements are a series of vertically arranged
+transition probabilities. These are the probabilities of a patient transitioning
+to the beginning of any other tunnel — either a later tunnel (strip to the
+right) or an earlier one (strip to the left, i.e. a backwards transition). For
+instance, in the first tunnel, the probability of moving from cycle 1 of tunnel
+1 to cycle 1 of tunnel 3 would be positioned in row 2, but in the same column as
+the first row of the 3rd tunnel. During matrix multiplication, those patients
+then "move" to the beginning of tunnel 3.  
 
 If you look closely at the image, you can see that the first row is empty. This
 is because the transition probabilities for the state(s) prior to entering the
@@ -121,13 +124,20 @@ like for `m1`:
 print(m_spec$m1_ijx)
 ```
 
+Note that each pre-tunnel state has a set of coordinate slots allowing backwards
+transitions to permit modellers to use this should they need it. The required
+transitions are essentially from a pre-tunnel state to all other states. In the
+function, backwards slots default to zero and are filtered out before putting
+numbers into the large matrix objects or extrapolating the model.
+
 In the above, `i` is row, `j` is column, and `x` is value, which at this stage
 we do not know yet. Given that we set `pre_tunnel_states` to `2`, we need to
 populate the top two rows of `M` every model cycle, as these change over time.
 In other words, the pre-tunnel states are the states before the treatment
 sequence, and their transition probabilities are based on time from baseline,
 `t`, rather than time within each tunnel, `d` (where there is a separate `d` for
-each tunnel).
+each tunnel, and `d` "resets" if patients loop back into a tunnel they were
+previously resident within).
 
 For `m1`, we will generate a `list` object with length equal to the number of
 model cycles, with one matrix for each cycle. In this sense, `m1` takes a
@@ -213,9 +223,10 @@ from the coordinates, and the values we need go into elements with `j = i + 1`:
 print(m_spec$m2_ijx[1:4, ])
 ```
 
-For transitions to all subsequent tunnels, values are arranged as vertical
-strips to the right. These mean that patients exiting the tunnel **go to the
-beginning of a subsequent tunnel**.
+For transitions to all other tunnels, values are arranged as vertical strips.
+Strips to the right of the superdiagonal represent forward transitions; strips
+to the left represent backwards transitions. Patients exiting the tunnel go to
+the beginning of the destination tunnel regardless of direction.
 
 The transition from the first tunnel to the second:
 
@@ -253,39 +264,36 @@ We know columns `r m_spec$matrix_size` is death because `m_spec$matrix_size` is
 `r m_spec$matrix_size`, and that matches the number in the `j` column of the
 matrix.  
 
-The next thing to note is that in each tunnel block after the first, the row
-indices increase corresponding to the sizing of each tunnel, as do the column
-indices, but the number of "destination" states reduces by one. This is because
-the implicit assumption in this kind of model is that patients cannot return to
-a previous tunnel. However, it is possible to incorporate backwards transitions
-if desired by adding in **more vertical strips**. As of this version, this is
-not currently included, but it is be possible (and not difficult) to add it and
-the feature is planned. Such transitions would then allow conceptual models
-which have been incredibly useful in real HTA submissions in disease areas such
-as relapsing and remitting multiple sclerosis, where patients enter tunnels
-corresponding to relapses which can last up to a certain amount of time. From
-these tunnels, the relapse can end without permanent progression (i.e., going
-backwards), or with permanent progression (i.e., going forwards). 
+Every tunnel block has the same number of vertical strips — one for each other
+tunnel plus death, including backwards transitions, even if you haven't provided
+any. For example, tunnel 2 can transition to the beginning of tunnel 1 just as
+easily as forward to tunnel 3 or to death. Backwards destinations default to
+zero if not supplied and are filtered from the sparse matrix before
+construction, so there is very little if any computational cost (nanoseconds)
+for unused transitions. This is particularly useful in e.g. relapsing-remitting
+disease areas where a relapse tunnel can resolve without progression (backwards)
+or with progression (forwards).
 
-Given that we currently have progression-only in `treatseqr`, the number of
-transition probabilities needed for tunnel 2 in this case is `15`, as opposed to
-`20` for tunnel 1:
+In `treatseqr`, we are agnostic to progressive disease structures, so the number
+of transition probabilities needed for every tunnel is the same. In this case it is
+`20`:
 
 ```{r m2_example_tunnel2}
-print(m_spec$m2_ijx[21:35, ])
+print(m_spec$m2_ijx[21:40, ])
 ```
 
-Similarly the third and final tunnel has less rows again:
+Similarly the third tunnel also has 20 rows, now including backwards strips to
+both tunnel 1 and tunnel 2:
 
 ```{r m2_example_tunnel3}
-print(m_spec$m2_ijx[36:45, ])
+print(m_spec$m2_ijx[41:60, ])
 ```
 
 Finally, `m2` needs an absorbing death state, which the function helps you
 identify by putting `1` in the x column as it is known:
 
 ```{r m2_example_death}
-print(m_spec$m2_ijx[46, ])
+print(m_spec$m2_ijx[nrow(m_spec$m2_ijx), ])
 ```
 
 The next step is to populate `m1_ijx` with the data (i.e., `x` values), as well
@@ -566,7 +574,8 @@ step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
 # validate inputs and generate the full matrix m from one function
 m <- generate_m_list(
   m_specification = m_spec,
-  transition_prob_list = tp_source
+  transition_prob_list = tp_source,
+  first_state_name = "on_1l"
 )
 ```
 
