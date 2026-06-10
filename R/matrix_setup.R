@@ -40,6 +40,7 @@
 #'
 #' # Multiple pre-tunnel states
 #' specify_m(rep(3, 3), pre_tunnel_states = 2)
+#' @importFrom utils head
 #' @export
 specify_m <- function(tunnel_lengths, pre_tunnel_states = 1) {
   assertthat::assert_that(

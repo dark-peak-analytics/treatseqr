@@ -45,6 +45,8 @@
 #'
 #' @return The sanitized `tp_source` list where all `NULL` entries have been
 #'   replaced with vectors of zeros of the correct length.
+#' @importFrom utils tail
+#' @importFrom stats setNames
 #' @export
 validate_tp_source <- function(
   tp_source,
