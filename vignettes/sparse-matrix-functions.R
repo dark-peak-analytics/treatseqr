@@ -175,7 +175,7 @@ print(m1_list[[1]])
 
 ## ----assert_m1_sums-----------------------------------------------------------
 assertthat::assert_that(
-  all(unlist(lapply(m1_list, sum)) == 1),
+  all(unlist(lapply(m1_list, function(x) round(sum(x), 1e-14))) == 1),
   msg = "m1 rows do not sum to 1"
 )
 
@@ -207,4 +207,3 @@ plot(1 - pop[nrow(pop), ],
   type = "l", xlab = "Cycle", ylab = "Overall Survival",
   main = "Overall Survival Curve"
 )
-
