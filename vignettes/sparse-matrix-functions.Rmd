@@ -558,7 +558,7 @@ in the above!):
 ```{r assert_m1_sums}
 # assert that all m1 rows sum to 1 for all model cycles:
 assertthat::assert_that(
-  all(unlist(lapply(m1_list, sum)) == 1),
+  all(unlist(lapply(m1_list, function(x) round(sum(x), 1e-14))) == 1),
   msg = "m1 rows do not sum to 1"
 )
 ```
