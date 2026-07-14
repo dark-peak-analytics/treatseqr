@@ -89,6 +89,15 @@ validate_tp_source <- function(
     }
   }
 
+  # Death name makes sense. it is the only thing in tp_source that doesn't
+  # have a state (as it is absorbing)
+  all_dests <- unique(unlist(lapply(tp_source, names)))
+  death_name <- setdiff(all_dests, names(tp_source))
+  assertthat::assert_that(
+    length(death_name) == 1L,
+    msg = "Death state does not appear only as a destination (absorbing)"
+  )
+
   # Determine canonical state order
   if (!is.null(state_names)) {
     assertthat::assert_that(
@@ -103,12 +112,34 @@ validate_tp_source <- function(
       all(names(tp_source) %in% state_names),
       msg = "All names in 'tp_source' must be present in 'state_names'"
     )
+
     canonical_names <- state_names
   } else {
     assertthat::assert_that(
       length(tp_source[[1L]]) >= 1L,
       msg = "First element of tp_source must have at least one destination (the death state)"
     )
+
+    # Because user hasn't given the state names explicitly we must infer. We
+    # have already deduced the name of the death transition so we now must
+    # validate that it is in all elements of tp_source, and is the last element
+    # in each.
+    assertthat::assert_that(
+      all(vapply(
+        tp_source,
+        function(x) {
+          death_name == names(x)[length(names(x))]
+        },
+        logical(1L)
+      )),
+      msg = paste0(
+        "The state ",
+        sQuote(death_name),
+        " must be the LAST element in each element of ",
+        sQuote("tp_source")
+      )
+    )
+
     # Infer: first-level names + last destination name of first state (= death)
     death_name <- tail(names(tp_source[[1L]]), 1L)
     canonical_names <- c(names(tp_source), death_name)
