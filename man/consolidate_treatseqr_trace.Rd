@@ -6,7 +6,7 @@
 \code{extrapolate_treatseqr}
 Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks}
 \usage{
-consolidate_treatseqr_trace(full_trace, spec, state_names)
+consolidate_treatseqr_trace(full_trace, spec, state_names, m = NULL)
 }
 \arguments{
 \item{full_trace}{A matrix representing the full trace of state occupancies
@@ -15,11 +15,19 @@ over time.}
 \item{spec}{A list containing model specifications, including:
 \itemize{
 \item pre_tunnels: Number of pre-tunnel states
-\item m1_ijx: Matrix with state indices and bounds
+\item tunnel_lengths: Integer vector of tunnel block lengths
 }}
 
 \item{state_names}{A character vector of state names for labeling output
 matrices.}
+
+\item{m}{Optional list as returned by \code{generate_m_list()}. When
+supplied, its per-cycle pre-tunnel matrices (\code{m$m1}) are used to
+compute true time-in-state (sojourn) curves for the pre-tunnel columns of
+\code{d}, weighting each entry cohort by its size. When \code{NULL}, the
+pre-tunnel columns of \code{d} fall back to wall-time occupancy, which only
+coincides with a sojourn curve for a single pre-tunnel start state; a
+warning is issued if \code{pre_tunnels > 1}.}
 }
 \value{
 A list with two elements:
@@ -44,4 +52,12 @@ each tunnel.
 \item The function is useful for cost-effectiveness modeling where tunnel states
 are present.
 }
+
+The \code{d} matrix is indexed by cycles since state entry: tunnel columns
+are person-cycles at each tunnel position normalized by total traffic into
+the tunnel, pre-tunnel columns are entry-cohort-weighted survival-in-state
+curves (requires \code{m}), and the dead column is overall survival. Every
+column of \code{d} therefore starts at 1 (or 0 for states never entered).
+As with tunnels, entry cohorts are aggregated across wall time, so curves
+mix cohorts entering at different model cycles.
 }

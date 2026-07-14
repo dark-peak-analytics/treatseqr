@@ -12,9 +12,16 @@
 #' over time.
 #' @param spec A list containing model specifications, including:
 #'   - pre_tunnels: Number of pre-tunnel states
-#'   - m1_ijx: Matrix with state indices and bounds
+#'   - tunnel_lengths: Integer vector of tunnel block lengths
 #' @param state_names A character vector of state names for labeling output
 #' matrices.
+#' @param m Optional list as returned by \code{generate_m_list()}. When
+#' supplied, its per-cycle pre-tunnel matrices (\code{m$m1}) are used to
+#' compute true time-in-state (sojourn) curves for the pre-tunnel columns of
+#' \code{d}, weighting each entry cohort by its size. When \code{NULL}, the
+#' pre-tunnel columns of \code{d} fall back to wall-time occupancy, which only
+#' coincides with a sojourn curve for a single pre-tunnel start state; a
+#' warning is issued if \code{pre_tunnels > 1}.
 #'
 #' @return A list with two elements:
 #'   - t: Matrix of time-based state occupancies (rows: cycles, columns: states)
@@ -29,39 +36,35 @@
 #' - The function is useful for cost-effectiveness modeling where tunnel states
 #' are present.
 #'
+#' The \code{d} matrix is indexed by cycles since state entry: tunnel columns
+#' are person-cycles at each tunnel position normalized by total traffic into
+#' the tunnel, pre-tunnel columns are entry-cohort-weighted survival-in-state
+#' curves (requires \code{m}), and the dead column is overall survival. Every
+#' column of \code{d} therefore starts at 1 (or 0 for states never entered).
+#' As with tunnels, entry cohorts are aggregated across wall time, so curves
+#' mix cohorts entering at different model cycles.
+#'
 #' @export
-consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
+consolidate_treatseqr_trace <- function(full_trace, spec, state_names, m = NULL) {
   pre_tun <- spec$pre_tunnels
-  bounds <- spec$m1_ijx[, "j"]
+  n_states <- pre_tun + length(spec$tunnel_lengths) + 1L
+  tunnel_starts <- pre_tun +
+    cumsum(c(1L, utils::head(spec$tunnel_lengths, -1L)))
+  tun_blocks <- lapply(seq_along(tunnel_starts), function(k) {
+    c(tunnel_starts[k], tunnel_starts[k] + spec$tunnel_lengths[k] - 1L)
+  })
 
   # th is trace columns less 1 for dead
   th <- ncol(full_trace) - 1
-  n_states <- nrow(spec$m1_ijx)
 
   # pre-tunnel blocks are just one row each, so just a sequence is fine:
   pre_blocks <- seq_len(pre_tun)
 
-  # within-tunnel blocks are pairings of first row and last row, which go from
-  # element pre_tun + 1 to length(bounds). However, each 2nd item needs reducing
-  # by 1 because that is the starting point of the next tunnel not the end of
-  # this one.
-  tun_indices <- (pre_tun + 1):(length(bounds) - 1)
-
-  # Generate the coordinate bounds for each tunnel block. This is the same when
-  # summing across rows, or in columns restricting to rows.
-  tun_blocks <- lapply(
-    seq_along(tun_indices),
-    function(k) {
-      tunnel_start <- bounds[tun_indices[k]]
-      c(tunnel_start, tunnel_start + spec$tunnel_lengths[k] - 1)
-    }
-  )
-
   # compute trace values and give names:
-  trace_pre <- t(full_trace[pre_blocks, ])
+  trace_pre <- t(full_trace[pre_blocks, , drop = FALSE])
 
   # Dead block is just the last row:
-  trace_dead <- t(full_trace[nrow(full_trace), ])
+  trace_dead <- t(full_trace[nrow(full_trace), , drop = FALSE])
 
   # tunnel populations:
   trace_tun_t <- lapply(tun_blocks, function(tun_idx) {
@@ -79,6 +82,68 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
     c(d_vec, rep(0, th - length(d_vec)))
   })
 
+  # pre-tunnel d columns. Tunnels encode time-in-state positionally in the
+  # trace, but a pre-tunnel state is a single row, so its sojourn curve needs
+  # the per-cycle staying probabilities from m$m1.
+  if (is.null(m)) {
+    if (pre_tun > 1) {
+      warning(
+        "With multiple pre-tunnel states, pre-tunnel columns of `d` are ",
+        "wall-time occupancy, not time-in-state curves. Supply `m` to ",
+        "compute true sojourn curves."
+      )
+    }
+    trace_pre_d <- trace_pre[-(th + 1), , drop = FALSE]
+  } else {
+    assertthat::assert_that(
+      length(m$m1) == th,
+      msg = "length(m$m1) must match the trace time horizon (ncol - 1)"
+    )
+    # p_stay[s, u]: probability that pre-tunnel state s retains its occupants
+    # across the transition from time u - 1 to time u
+    p_stay <- vapply(
+      m$m1,
+      function(m1_cyc) {
+        vapply(pre_blocks, function(s) m1_cyc[s, s], numeric(1))
+      },
+      numeric(pre_tun)
+    )
+    p_stay <- matrix(p_stay, nrow = pre_tun)
+
+    trace_pre_d <- vapply(
+      pre_blocks,
+      FUN.VALUE = numeric(th),
+      FUN = function(s) {
+        occ <- full_trace[s, ]
+        ps <- p_stay[s, ]
+
+        # entrants at each time: initial occupancy, then any occupancy not
+        # explained by last cycle's occupants staying put (guard tiny negative
+        # values from floating point)
+        inflow <- c(occ[1], occ[-1] - occ[-(th + 1)] * ps)
+        inflow[inflow < 0] <- 0
+        total <- sum(inflow)
+        if (total == 0) {
+          return(rep(0, th))
+        }
+
+        # aggregate each entry cohort's survival-in-state, mirroring the
+        # tunnel normalization: numerator only includes cohorts observable
+        # within the horizon, denominator is total traffic into the state
+        d_vec <- numeric(th)
+        d_vec[1] <- 1
+        surv <- rep(1, th + 1)
+        for (k in seq_len(th)[-1]) {
+          cohort <- seq_len(th - k + 2)
+          surv[cohort] <- surv[cohort] * ps[cohort + k - 2]
+          d_vec[k] <- sum(inflow[cohort] * surv[cohort]) / total
+        }
+        d_vec
+      }
+    )
+    trace_pre_d <- matrix(trace_pre_d, nrow = th)
+  }
+
   # return list with 2 matrices, one for t-based, one for d based:
   t_mat <- matrix(
     c(trace_pre, unlist(trace_tun_t, use.names = FALSE), trace_dead),
@@ -94,7 +159,7 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
 
   d_mat <- matrix(
     c(
-      trace_pre[-(th + 1)],
+      trace_pre_d,
       unlist(trace_tun_d, use.names = FALSE),
       1 - trace_dead[-(th + 1)]
     ),

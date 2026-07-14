@@ -297,6 +297,107 @@ test_that("consolidate_treatseqr_trace zero-pads d for short tunnel in variable-
   expect_true(all(result$d >= 0))
 })
 
+# regression test: consolidation must not derive state structure from
+# nrow(m1_ijx), which has one row per (pre-tunnel state, destination) pair and
+# only matches the state count when pre_tunnel_states == 1
+test_that("consolidate_treatseqr_trace works with multiple pre-tunnel states", {
+  m_spec <- specify_m(tunnel_lengths = c(2, 2), pre_tunnel_states = 2)
+
+  tp_list <- list(
+    pre1 = list(
+      pre2 = rep(0.10, 2), tun1 = rep(0.10, 2),
+      tun2 = rep(0.05, 2), die = rep(0.01, 2)
+    ),
+    pre2 = list(
+      pre1 = rep(0.02, 2), tun1 = rep(0.10, 2),
+      tun2 = rep(0.05, 2), die = rep(0.01, 2)
+    ),
+    tun1 = list(tun2 = rep(0.10, 2), die = rep(0.10, 2)),
+    tun2 = list(die = rep(0.20, 2))
+  )
+
+  m <- generate_m_list(
+    m_specification = m_spec,
+    transition_prob_list = tp_list,
+    first_state_name = "pre1"
+  )
+  full_trace <- extrapolate_treatseqr(m, m_spec)
+
+  # 2 pre-tunnel + 2 tunnels + dead = 5 consolidated states
+  state_names <- c("pre1", "pre2", "tun1", "tun2", "die")
+
+  expect_no_warning(
+    result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names, m)
+  )
+
+  th <- ncol(full_trace) - 1L
+  expect_equal(ncol(result$t), 5)
+  expect_equal(ncol(result$d), 5)
+  expect_equal(nrow(result$t), th + 1)
+  expect_equal(nrow(result$d), th)
+  expect_equal(colnames(result$t), state_names)
+  expect_equal(colnames(result$d), state_names)
+  expect_true(all(abs(rowSums(result$t) - 1) < 1e-10))
+  expect_equal(unname(result$t[1, "pre1"]), 1)
+
+  # d is indexed by cycles since state entry, so its top row is 1 for every
+  # state, and every column is non-increasing
+  expect_equal(unname(result$d[1, ]), rep(1, 5))
+  expect_true(all(apply(result$d, 2, function(col) all(diff(col) <= 1e-10))))
+
+  # hand-computed sojourn values. pre2: p_stay = 1 - 0.18 = 0.82,
+  # entrants = (0, 0.10, 0.074); of 0.174 total traffic, only the 0.10 cohort
+  # is observable one cycle after entry, surviving with p_stay:
+  expect_equal(unname(result$d[2, "pre2"]), 0.10 * 0.82 / 0.174)
+  # pre1: p_stay = 0.74, entrants = (1, 0, 0.002); only the initial cohort is
+  # observable one cycle after entry:
+  expect_equal(unname(result$d[2, "pre1"]), 0.74 / 1.002)
+  # dead column is overall survival:
+  expect_equal(unname(result$d[, "die"]), unname(1 - result$t[1:th, "die"]))
+
+  # without m, pre-tunnel d columns cannot be sojourn curves: warn and fall
+  # back to wall-time occupancy
+  expect_warning(
+    fallback <- consolidate_treatseqr_trace(full_trace, m_spec, state_names),
+    regexp = "Supply `m` to\\s+compute true sojourn curves"
+  )
+  expect_equal(unname(fallback$d[, "pre2"]), unname(result$t[1:th, "pre2"]))
+  # tunnel and dead columns are unaffected by the fallback
+  expect_equal(fallback$d[, c("tun1", "tun2", "die")],
+               result$d[, c("tun1", "tun2", "die")])
+})
+
+# with a single pre-tunnel state there is no re-entry, so the sojourn curve
+# computed from m equals the occupancy fallback exactly
+test_that("supplying m reproduces legacy d for a single pre-tunnel state", {
+  m_spec <- specify_m(tunnel_lengths = rep(5, 2), pre_tunnel_states = 1)
+
+  tp_list <- list(
+    state1 = list(
+      state2 = rep(0.2, 5),
+      state3 = rep(0.1, 5),
+      die = rep(0.05, 5)
+    ),
+    state2 = list(
+      state3 = rep(0.3, 5),
+      die = rep(0.1, 5)
+    ),
+    state3 = list(
+      die = rep(0.2, 5)
+    )
+  )
+
+  m <- generate_m_list(m_spec, tp_list)
+  full_trace <- extrapolate_treatseqr(m, m_spec)
+  state_names <- c("state1", "state2", "state3", "dead")
+
+  legacy <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
+  with_m <- consolidate_treatseqr_trace(full_trace, m_spec, state_names, m)
+
+  expect_equal(with_m$d, legacy$d)
+  expect_equal(with_m$t, legacy$t)
+})
+
 # regression test: 1-cycle tunnel states (holding states) are possible without
 # errors, and the probability of exit is 1
 testthat::test_that("tunnel length of 1 still works with consolidate_treatseqr_trace", {
