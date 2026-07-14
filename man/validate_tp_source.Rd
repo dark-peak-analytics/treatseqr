@@ -19,12 +19,12 @@ of pre-tunnel states is inferred as
 must all share a common length, and each tunnel \code{k}'s vectors must
 have length \code{tunnel_lengths[k]}.}
 
-\item{state_names}{An optional string vector which is used as the "ground
-truth" for validating the names of the inner lists in \code{tp_source}, in order.
-Both the names of the states and their ordering will use this if supplied. If
-not supplied, then state names AND ORDERING will be inferred from the names
-of \code{tp_source} itself.The last element must be the absorbing (death)
-state. All names present in \code{tp_source} must appear in state_names.}
+\item{state_names}{An optional character vector used to validate
+\code{tp_source}. It must equal \code{names(tp_source)} in the same order,
+with the absorbing (death) state appended as the last element. It cannot be
+used to reorder states: the matrix layout produced by \code{specify_m()} is
+positional. If not supplied, state names and ordering are inferred from
+\code{tp_source} itself.}
 }
 \value{
 The sanitized \code{tp_source} list where all \code{NULL} entries have been
@@ -46,8 +46,9 @@ Specifically, this function ensures:
 canonical set) in canonical order. Missing destinations are inserted as
 NULL, which are subsequently replaced with zero vectors respecting
 \code{tunnel_lengths}.
-\item If state_names is supplied, it defines the canonical set and order.
-Otherwise it is inferred from tp_source.
+\item If state_names is supplied, it is used purely as a cross-check:
+it must equal names(tp_source) in order, with the death state appended
+last. Otherwise the canonical set and order are inferred from tp_source.
 \item All probability vectors must have consistent lengths (see
 \code{tunnel_lengths} below).
 \item Probabilities must be non-negative and sum to <= 1 (row-wise).

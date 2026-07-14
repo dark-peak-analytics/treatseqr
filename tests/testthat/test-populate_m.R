@@ -125,3 +125,39 @@ test_that("generate_m_list handles non-zero backwards tunnel transition", {
   expect_equal(as.numeric(result$m2[6, 2]), 0.05)
   expect_equal(as.numeric(result$m2[7, 2]), 0.05)
 })
+
+test_that("generate_m_list rejects reordered state_names, places probs positionally", {
+  # 1 pre-tunnel, 2 tunnels of length 2.
+  # tunnel_starts: tun1=col 2, tun2=col 4; death=col 6
+  th <- 2
+  m_spec <- specify_m(tunnel_lengths = rep(th, 2), pre_tunnel_states = 1)
+
+  tp <- list(
+    pre = list(tun1 = rep(0.11, th), tun2 = rep(0.22, th), die = rep(0.03, th)),
+    tun1 = list(tun2 = rep(0.44, th), die = rep(0.04, th)),
+    tun2 = list(tun1 = rep(0.55, th), die = rep(0.05, th))
+  )
+
+  # Matching order: probabilities land in the columns implied by specify_m()
+  result <- generate_m_list(
+    m_spec,
+    tp,
+    first_state_name = "pre",
+    state_names = c("pre", "tun1", "tun2", "die")
+  )
+  m1_cycle1 <- as.matrix(result$m1[[1]])
+  expect_equal(m1_cycle1[1, 2], 0.11) # pre -> tun1 at tun1's start column
+  expect_equal(m1_cycle1[1, 4], 0.22) # pre -> tun2 at tun2's start column
+  expect_equal(m1_cycle1[1, 6], 0.03) # pre -> die at death column
+
+  # Reordered state_names must error, not silently swap the tunnel columns
+  expect_error(
+    generate_m_list(
+      m_spec,
+      tp,
+      first_state_name = "pre",
+      state_names = c("pre", "tun2", "tun1", "die")
+    ),
+    "'state_names' must match names\\(tp_source\\) in the same order"
+  )
+})

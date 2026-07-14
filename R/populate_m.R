@@ -24,13 +24,13 @@
 #' state.
 #' @param first_state_name A character string naming the initial (pre-tunnel)
 #' state. Defaults to `"initial"`.
-#' @param state_names An optional string vector which is used as the "ground
-#' truth" for validating the names of the inner lists in `tp_source`, in order.
-#' Both the names of the states and their ordering will use this if supplied. If
-#' not supplied, then state names AND ORDERING will be inferred from the names
-#' of \code{transition_prob_list} itself.The last element must be the absorbing
-#' (death) state. All names present in \code{transition_prob_list} must appear
-#' in state_names.
+#' @param state_names An optional character vector used to validate
+#' \code{transition_prob_list}. It must equal
+#' \code{names(transition_prob_list)} in the same order, with the absorbing
+#' (death) state appended as the last element. It cannot be used to reorder
+#' states: the matrix layout produced by \code{specify_m()} is positional. If
+#' not supplied, state names and ordering are inferred from
+#' \code{transition_prob_list} itself.
 #'
 #' @return A list with two elements:
 #'   - m1: A list of sparse matrices (one per cycle) for pre-tunnel states.

@@ -81,7 +81,40 @@ test_that("validate_tp_source errors when tp_source names missing from state_nam
   )
   expect_error(
     validate_tp_source(tp, state_names = c("x", "b", "c")),
-    "All names in 'tp_source' must be present in 'state_names'"
+    "'state_names' must match names\\(tp_source\\) in the same order"
+  )
+})
+
+test_that("validate_tp_source errors on reordered state_names", {
+  th_cyc <- 2
+  tp <- list(
+    pre = list(
+      tun1 = rep(0.11, th_cyc),
+      tun2 = rep(0.22, th_cyc),
+      die = rep(0.03, th_cyc)
+    ),
+    tun1 = list(tun2 = rep(0.44, th_cyc), die = rep(0.04, th_cyc)),
+    tun2 = list(tun1 = rep(0.55, th_cyc), die = rep(0.05, th_cyc))
+  )
+  # Same set of names, but tunnels swapped relative to names(tp): the matrix
+  # layout is positional, so this must be rejected rather than silently
+  # misplacing probabilities
+  expect_error(
+    validate_tp_source(tp, state_names = c("pre", "tun2", "tun1", "die")),
+    "'state_names' must match names\\(tp_source\\) in the same order"
+  )
+})
+
+test_that("validate_tp_source errors when death name in state_names mismatches", {
+  tp <- list(
+    a = list(b = 0.1, die = 0.05),
+    b = list(die = 0.10)
+  )
+  # 'dead' is not the death name used in tp destinations ('die'); previously
+  # this silently zeroed the death transition probabilities
+  expect_error(
+    validate_tp_source(tp, state_names = c("a", "b", "dead")),
+    "'state_names' must match names\\(tp_source\\) in the same order"
   )
 })
 

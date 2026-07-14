@@ -14,8 +14,9 @@
 #'     canonical set) in canonical order. Missing destinations are inserted as
 #'     NULL, which are subsequently replaced with zero vectors respecting
 #'     `tunnel_lengths`.
-#'     \item If state_names is supplied, it defines the canonical set and order.
-#'     Otherwise it is inferred from tp_source.
+#'     \item If state_names is supplied, it is used purely as a cross-check:
+#'     it must equal names(tp_source) in order, with the death state appended
+#'     last. Otherwise the canonical set and order are inferred from tp_source.
 #'     \item All probability vectors must have consistent lengths (see
 #'     \code{tunnel_lengths} below).
 #'     \item Probabilities must be non-negative and sum to <= 1 (row-wise).
@@ -36,12 +37,12 @@
 #'   \code{length(tp_source) - length(tunnel_lengths)}, pre-tunnel TP vectors
 #'   must all share a common length, and each tunnel \code{k}'s vectors must
 #'   have length \code{tunnel_lengths[k]}.
-#' @param state_names An optional string vector which is used as the "ground
-#' truth" for validating the names of the inner lists in `tp_source`, in order.
-#' Both the names of the states and their ordering will use this if supplied. If
-#' not supplied, then state names AND ORDERING will be inferred from the names
-#' of \code{tp_source} itself.The last element must be the absorbing (death)
-#' state. All names present in \code{tp_source} must appear in state_names.
+#' @param state_names An optional character vector used to validate
+#' \code{tp_source}. It must equal \code{names(tp_source)} in the same order,
+#' with the absorbing (death) state appended as the last element. It cannot be
+#' used to reorder states: the matrix layout produced by \code{specify_m()} is
+#' positional. If not supplied, state names and ordering are inferred from
+#' \code{tp_source} itself.
 #'
 #' @return The sanitized `tp_source` list where all `NULL` entries have been
 #'   replaced with vectors of zeros of the correct length.
@@ -109,8 +110,12 @@ validate_tp_source <- function(
       )
     )
     assertthat::assert_that(
-      all(names(tp_source) %in% state_names),
-      msg = "All names in 'tp_source' must be present in 'state_names'"
+      identical(state_names, c(names(tp_source), death_name)),
+      msg = paste0(
+        "'state_names' must match names(tp_source) in the same order, with the ",
+        "absorbing (death) state appended last. The matrix layout produced by ",
+        "specify_m() is positional and cannot be reordered via state_names."
+      )
     )
 
     canonical_names <- state_names
