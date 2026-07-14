@@ -281,8 +281,8 @@ test_that("consolidate_treatseqr_trace zero-pads d for short tunnel in variable-
   # Build a minimal full_trace (8 rows x 5 cols = t0:t4)
   # All population starts in state 1 and stays there for simplicity
   full_trace <- matrix(0, nrow = m_spec$matrix_size, ncol = 5)
-  full_trace[1, ] <- 1   # all in pre-tunnel state throughout
-  full_trace[m_spec$matrix_size, ] <- 0  # nobody dead
+  full_trace[1, ] <- 1 # all in pre-tunnel state throughout
+  full_trace[m_spec$matrix_size, ] <- 0 # nobody dead
 
   state_names <- c("pre", "tun1", "tun2", "dead")
 
@@ -295,4 +295,58 @@ test_that("consolidate_treatseqr_trace zero-pads d for short tunnel in variable-
   # d matrix should contain no NA values (short tunnel was zero-padded)
   expect_false(anyNA(result$d))
   expect_true(all(result$d >= 0))
+})
+
+# regression test: 1-cycle tunnel states (holding states) are possible without
+# errors, and the probability of exit is 1
+testthat::test_that("tunnel length of 1 still works with consolidate_treatseqr_trace", {
+  m_spec <- specify_m(tunnel_lengths = rep(1, 2), pre_tunnel_states = 1)
+
+  tp_list <- list(
+    s1 = list(
+      s2 = rep(0.2, 10),
+      s3 = rep(0.1, 10),
+      die = rep(0.05, 10)
+    ),
+    s2 = list(
+      s3 = rep(0.3, 1),
+      die = rep(0.1, 1)
+    ),
+    s3 = list(
+      die = rep(0.2, 1)
+    )
+  )
+
+  # expect a message indicating that patients will transition out of the tunnel
+  # after 1 cycle
+  testthat::expect_message(
+    generate_m_list(
+      m_specification = m_spec,
+      transition_prob_list = tp_list,
+      first_state_name = "s1"
+    ),
+    regexp = "Patients will transition out of the tunnel after 1 cycle."
+  )
+
+  # compile
+  m <- suppressMessages(generate_m_list(
+    m_specification = m_spec,
+    transition_prob_list = tp_list,
+    first_state_name = "s1"
+  ))
+  full_trace <- extrapolate_treatseqr(m, m_spec)
+  state_names <- c("s1", "s2", "s3", "dead")
+
+  result <- consolidate_treatseqr_trace(full_trace, m_spec, state_names)
+
+  # dimensions are correct
+  testthat::expect_equal(nrow(result$t), 11)
+
+  # all rows in t sum to 1
+  testthat::expect_equal(rowSums(result$t), rep(1, 11))
+
+  # sojourn time d output implies that patients can only ben in s2 and s3 for 1
+  # cycle
+  testthat::expect_equal(unname(result$d[1, "s2"]), 1)
+  testthat::expect_equal(unname(result$d[1, "s3"]), 1)
 })

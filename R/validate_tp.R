@@ -75,6 +75,20 @@ validate_tp_source <- function(
     msg = "All inner lists in tp_source must be named"
   )
 
+  if (!is.null(tunnel_lengths)) {
+    if (any(tunnel_lengths == 1)) {
+      n_pre <- length(tp_source) - length(tunnel_lengths)
+      which_one_tunnel <- which(tunnel_lengths == 1) + n_pre
+      msg <- paste0(
+        "Tunnel lengths of 1 are allowed, but the p_stay will be 0. Patients ",
+        "will transition out of the tunnel after 1 cycle. You have assigned ",
+        paste(sQuote(names(tp_source)[which_one_tunnel]), collapse = ",  "),
+        " to have a tunnel length of 1."
+      )
+      message(msg)
+    }
+  }
+
   # Determine canonical state order
   if (!is.null(state_names)) {
     assertthat::assert_that(

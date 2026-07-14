@@ -66,7 +66,7 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
   # tunnel populations:
   trace_tun_t <- lapply(tun_blocks, function(tun_idx) {
     index <- seq(tun_idx[1], tun_idx[2])
-    colSums(full_trace[index, ])
+    colSums(full_trace[index, , drop = FALSE])
   })
   trace_tun_d <- lapply(tun_blocks, function(tun_idx) {
     index <- seq(tun_idx[1], tun_idx[2])
@@ -74,7 +74,7 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names) {
     if (total == 0) {
       d_vec <- rep(0, length(index))
     } else {
-      d_vec <- rowSums(full_trace[index, ]) / total
+      d_vec <- rowSums(full_trace[index, , drop = FALSE]) / total
     }
     c(d_vec, rep(0, th - length(d_vec)))
   })
