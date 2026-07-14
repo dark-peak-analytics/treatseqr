@@ -123,6 +123,27 @@ generate_m_list <- function(
     lapply(seq_along(tp_tun), function(tunnel) {
       self_name <- names(tp_tun)[tunnel]
       state_dests <- tp_tun[[tunnel]]
+
+      # validation
+      dropped <- state_dests[names(state_dests) %in% pre_tun_names]
+      offending <- names(dropped)[vapply(
+        dropped,
+        function(v) any(v != 0),
+        logical(1L)
+      )]
+      assertthat::assert_that(
+        length(offending) == 0L,
+        msg = sprintf(
+          paste0(
+            "State '%s' specifies non-zero transitions to pre-tunnel state(s) %s, ",
+            "which are not supported: tunnel states cannot transition back to ",
+            "pre-tunnel states."
+          ),
+          self_name,
+          paste(sQuote(offending), collapse = ", ")
+        )
+      )
+
       # Exclude self (p_stay computed as complement) and pre-tunnel destinations
       # (no m2 coordinate slots exist for pre-tunnel columns)
       keep_names <- names(state_dests)[
