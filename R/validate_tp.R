@@ -79,10 +79,10 @@ validate_tp_source <- function(
   if (!is.null(state_names)) {
     assertthat::assert_that(
       is.character(state_names),
-      length(state_names) >= n_states + 1L,
+      length(state_names) == n_states + 1L,
       msg = paste0(
-        "'state_names' must be a character vector with at least ",
-        "length(tp_source) + 1 elements (all states plus the death state)"
+        "'state_names' must have exactly length(tp_source) + 1 elements ",
+        "(all transient states plus the death state)"
       )
     )
     assertthat::assert_that(
