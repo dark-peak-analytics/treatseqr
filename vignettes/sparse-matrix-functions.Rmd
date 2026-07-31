@@ -1,8 +1,8 @@
 ---
-title: "Sparse Matrix Extrapolation using `heseqmat`"
+title: "Sparse Matrix Extrapolation using `treatseqr`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Sparse Matrix Extrapolation using heseqmat}
+  %\VignetteIndexEntry{Sparse Matrix Extrapolation using treatseqr}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -15,14 +15,21 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-library(heseqmat)
+library(treatseqr)
 ```
 
 # Introduction
 
 This vignette runs through the process of setting up and extrapolating a
 sequencing model allowing patients to "skip over" tunnels (e.g. transition from
-the first tunnel directly to the 3rd).  
+the first tunnel directly to the 3rd), and also to "skip back" to any previous
+tunnel (e.g., from the 2nd tunnel back to the first). For technical reasons
+(wall time vs sojourn time), backwards transitions to pre-tunnel states are not
+supported. To do this, it is more appropriate to use a microsimulation that
+tracks how many times individual patients have attended a previous state, and
+for how long. Without substantially complicating our approach, this can't be
+done with simple matrices whilst balancing computational demands (to our
+knowledge).
 
 This is accomplished by creating a sparse transition probability matrix (TPM),
 populated with transitions in square "blocks" of size equal to the time horizon
@@ -44,13 +51,14 @@ the probability of remaining in the first tunnel after one cycle inside is
 positioned in 2,3, which is the probability of moving from cycle 1 to cycle 2
 of the first tunnel.  
 
-Horizontally to the right of the superdiagonal elements are a series of
-vertically arranged transition probabilities. These are the probabilities of a
-patient transitioning to the _beginning_ of a subsequent tunnel. For instance,
-in the first tunnel, the probability of moving from cycle 1 of tunnel 1 to
-cycle 1 of tunnel 3 would be positioned in row 2, but in the same column as the
-first row of the 3rd tunnel. During matrix multiplication, those patients then
-"move" to the beginning of tunnel 3.  
+On either side of the superdiagonal elements are a series of vertically arranged
+transition probabilities. These are the probabilities of a patient transitioning
+to the beginning of any other tunnel — either a later tunnel (strip to the
+right) or an earlier one (strip to the left, i.e. a backwards transition). For
+instance, in the first tunnel, the probability of moving from cycle 1 of tunnel
+1 to cycle 1 of tunnel 3 would be positioned in row 2, but in the same column as
+the first row of the 3rd tunnel. During matrix multiplication, those patients
+then "move" to the beginning of tunnel 3.  
 
 If you look closely at the image, you can see that the first row is empty. This
 is because the transition probabilities for the state(s) prior to entering the
@@ -99,9 +107,8 @@ The size of `M` is determined by several things:
 `M` is square, and can be defined using the function `specify_m`:
 
 ```{r specify_m}
-m_spec <- heseqmat::specify_m(
-  n_cycles = 5,
-  n_tunnels = 3,
+m_spec <- treatseqr::specify_m(
+  tunnel_lengths = rep(5, 3),
   pre_tunnel_states = 2
 )
 ```
@@ -122,15 +129,28 @@ like for `m1`:
 print(m_spec$m1_ijx)
 ```
 
-in the above, `i` is row, `j` is column, and `x` is value, which at this stage
-we do not know yet. given that we set `pre_tunnel_states` to `2`, we need to
-populate the top two rows of `M` every model cycle, as these change over time,
-and the transitions are based on time from baseline `t` rather than time within
-tunnel, `d`. By the time we generate a Markov trace, we will have generated a
-`list` object with length equal to the number of model cycles, with one matrix
-for each cycle. In this sense, `m1` takes a familiar approach to time-varying
-Markov modelling in `R` by simply applying the next appropriate matrix to the
-relevant population.  
+Note that each pre-tunnel state has a set of coordinate slots allowing backwards
+transitions to permit modellers to use this should they need it. The required
+transitions are essentially from a pre-tunnel state to all other states. In the
+function, backwards slots default to zero and are filtered out before putting
+numbers into the large matrix objects or extrapolating the model.
+
+In the above, `i` is row, `j` is column, and `x` is value, which at this stage
+we do not know yet. Given that we set `pre_tunnel_states` to `2`, we need to
+populate the top two rows of `M` every model cycle, as these change over time.
+In other words, the pre-tunnel states are the states before the treatment
+sequence, and their transition probabilities are based on time from baseline,
+`t`, rather than time within each tunnel, `d` (where there is a separate `d` for
+each tunnel, and `d` "resets" if patients loop back into a tunnel they were
+previously resident within).
+
+For `m1`, we will generate a `list` object with length equal to the number of
+model cycles, with one matrix for each cycle. In this sense, `m1` takes a
+familiar approach to time-varying Markov modelling in `R` by simply applying the
+next appropriate matrix to the relevant population. This is no different from
+defining a 3-dimensional array which would look like this: `m1[row, column,
+cycle]`, but the `list` approach is more efficient in `R` because it avoids the
+need to copy the whole array every time we change one value.
 
 `m2` is larger and a bit more involved. To explore it, let's take a look at the
 top 20 rows:
@@ -139,23 +159,79 @@ top 20 rows:
 print(m_spec$m2_ijx[1:20, ])
 ```
 
-There are different parts to this matrix, which correspond to different
-"blocks". As we set `pre_tunnel_states` to `2` in this case, the top left cell
-of the first block is row `3`, column `3`. This block corresponds to the first
-tunnel, and the first superdiagonal (1) elements are in rows `3` to `7`, columns
-`4` to `8`. These represent the probabilities of remaining in the first tunnel,
-given time in the tunnel `d`.  
+There are different "chunks" of information in `m2` corresponding to different
+tunnels, usually called **blocks**. As we set `pre_tunnel_states` to `2` in this
+case, the top left cell of the first block is cell `3,3` in the full matrix `M`.
+This block corresponds to the first tunnel, and the first superdiagonal (1)
+elements are in rows `3` to `7`, columns `4` to `8`. These represent the
+probabilities of remaining in the first tunnel but moving "along" by 1 time
+slot within the tunnel, given time in the tunnel `d`. By contrast, the diagonal
+elements `[3,3]` to `[7,7]` represent the probability of staying within the
+tunnel but also staying at the same `d`, essentially "freezing time" within the
+tunnel. This is very important to understand when considering our approach to
+fixed-duration tunnel-states, because `treatseqr` allows users to set a
+probability of staying in the last `d` of the tunnel state. Usually, modellers
+would set this probability to 0 by making the probability of going *somewhere*
+equal to 1 at the end of a tunnel in something akin to a decision-tree node.
+However, `treatseqr` is designed to avoid being overly prescriptive, and
+therefore allows users to set a probability of remaining in the last `d` of the
+tunnel. This gives a mechanism for "holding" patients within a tunnel until they
+exit it if there is a health state which matches this conceptual design. Note
+that this would make an exponential transition probability assumption for this
+"tunnel-within_tunnel" state as the same transition probabilities would be
+applied subsequently for these patients. For this reason, we would recommend
+building in a decision-tree node at the end of short fixed-duration tunnel
+states, such that the probability of staying in the tunnel past its end is zero.
 
-The probability of staying at the same time within tunnel (`d`) is always zero,
-so the column index `j` is always one higher than the row index `i` for this
-part:
+Practically, this is simple to implement as one would simply put the
+decision-tree node probabilities at the end of the vector for the tunnel (e.g.,
+if the tunnel was 3 cycles long, `p_stay` could be `c(0.9,0.8,0)`, `p_next`
+could be `c(0.05, 0.1, 0.9)` and `p_die` could be `c(0.05, 0.1, 0.1)` such that
+they all add up to 1 and the probability of staying in the tunnel is zero).
 
-```{r m2_example_top_5}
-print(m_spec$m2_ijx[1:5, ])
+The eagle-eyed among you may have seen that the function `specify_m` produces
+some probabilities on the diagonals:
+
+```{r m2_example_check}
+print(m_spec$m2_ijx[which(m_spec$m2_ijx[, 1] == m_spec$m2_ijx[, 2]), ])
 ```
 
-For transitions to subsequent tunnels, these are arranged vertically to
-the right.
+This corresponds to the above discussion (except for the last one, which is
+death). Essentially, the last transition in each tunnel state **is applied to
+the diagonal not superdiagonal**. This keeps patients within the tunnel if the
+probability is `>0`, rather than making structural assertions on your
+cost-effectiveness model, which may not follow the conceptual design forcing
+patients from one tunnel into the next one in the sequence!
+
+As a simple(ish) example, imagine a treatment sequence with 4 tunnels and one
+pre-tunnel for newly diagnosed (i.e., 5 treatment lines). What if the 3rd line
+therapy (tunnel 2) was a surgical intervention with a 3 cycle recovery period,
+after which patients are then split into responders (tunnel 3) and
+non-responders (tunnel 4)? Well, with `treatseqr` you can easily do this. With a
+time horizon of 5 (to keep the print short), this would be:
+
+```{r example_specify}
+treatseqr::specify_m(
+  tunnel_lengths = c(5, 5, 3, 5, 5),
+  pre_tunnel_states = 1
+)
+```
+
+With some simple treatment of the probabilities at the end of the 2nd tunnel
+state, we can put a decision-tree node at the end of the tunnel that is 3 cycles
+long such that patients either move to the 3rd or 4th tunnel.
+
+Except for the tunnel ends, the diagonal elements are all zero, so are excluded
+from the coordinates, and the values we need go into elements with `j = i + 1`:
+
+```{r m2_example_top_5}
+print(m_spec$m2_ijx[1:4, ])
+```
+
+For transitions to all other tunnels, values are arranged as vertical strips.
+Strips to the right of the superdiagonal represent forward transitions; strips
+to the left represent backwards transitions. Patients exiting the tunnel go to
+the beginning of the destination tunnel regardless of direction.
 
 The transition from the first tunnel to the second:
 
@@ -163,52 +239,67 @@ The transition from the first tunnel to the second:
 print(m_spec$m2_ijx[6:10, ])
 ```
 
-First tunnel to third tunnel:
+First tunnel jumping to third tunnel:
 
 ```{r m2_example_tunnel1_to_3}
 print(m_spec$m2_ijx[11:15, ])
 ```
 
-and so on, until we finally get to transitions from the first tunnel to death:
+
+Modelling-wise this is incredibly useful, as **the model is not limited to a
+series of successive tunnels**. Patients can skip to later tunnels. This is
+highly relevant in oncology, where it is well known that patients opt out of
+further treatment in favor of living life away from medical care as much as
+possible, especially as prognoses become worse. This gives a simple mechanism
+for this conceptual design. Simply supply transition probabilities from ANY
+state to a "no treatment" tunnel (or several for different situations), and then
+assign the correct probabilities in the right places. Then, `treatseqr` will
+generate a Markov trace allowing for the often overlooked impact of later-line
+opting out of treatment on overall cohort outcomes.
+
+
+Finally, the death state transitions from the first tunnel to death in this case
+are:
 
 ```{r m2_example_tunnel1_to_death}
 print(m_spec$m2_ijx[16:20, ])
 ```
 
-we know it is death because `m_spec$matrix_size` is `r m_spec$matrix_size`, and
-that matches the number in the `j` column of the matrix.  
+We know columns `r m_spec$matrix_size` is death because `m_spec$matrix_size` is
+`r m_spec$matrix_size`, and that matches the number in the `j` column of the
+matrix.  
 
-The next thing to note is that in each tunnel block after the first, the row
-indices increase by `n_cycles`, as do the column indices, but the number of
-"destination" states reduces by one. This is because the implicit assumption in
-this kind of model is that patients cannot return to a previous tunnel. However,
-it is possible to incorporate backwards transitions if desired by adding in
-**horizontally** aligned transition probabilities. this is not currently within
-this package, but it would be possible to add it. Such transitions would
-essentially meet the vertically arranged transitions in `m2` currently, and
-would therefore move patients back to the start of a previous tunnel.  
+Every tunnel block has the same number of vertical strips — one for each other
+tunnel plus death, including backwards transitions, even if you haven't provided
+any. For example, tunnel 2 can transition to the beginning of tunnel 1 just as
+easily as forward to tunnel 3 or to death. Backwards destinations default to
+zero if not supplied and are filtered from the sparse matrix before
+construction, so there is very little if any computational cost (nanoseconds)
+for unused transitions. This is particularly useful in e.g. relapsing-remitting
+disease areas where a relapse tunnel can resolve without progression (backwards)
+or with progression (forwards).
 
-The number of transition probabilities needed for tunnel 2 in this case is `15`,
-as opposed to `20` for tunnel 1:
+In `treatseqr`, we are agnostic to progressive disease structures, so the number
+of transition probabilities needed for every tunnel is the same. In this case it is
+`20`:
 
 ```{r m2_example_tunnel2}
-print(m_spec$m2_ijx[21:35, ])
+print(m_spec$m2_ijx[21:40, ])
 ```
 
-Similarly the third and final tunnel has less rows again:
+Similarly the third tunnel also has 20 rows, including backwards strips to both
+tunnel 1 and tunnel 2:
 
 ```{r m2_example_tunnel3}
-print(m_spec$m2_ijx[36:45, ])
+print(m_spec$m2_ijx[41:60, ])
 ```
 
 Finally, `m2` needs an absorbing death state, which the function helps you
 identify by putting `1` in the x column as it is known:
 
 ```{r m2_example_death}
-print(m_spec$m2_ijx[46, ])
+print(m_spec$m2_ijx[nrow(m_spec$m2_ijx), ])
 ```
-
-
 
 The next step is to populate `m1_ijx` with the data (i.e., `x` values), as well
 as `m2_ijx`. A function `populate_m` is used to organise the transition
@@ -217,9 +308,9 @@ probability data into the right order, and then put that in the `x` column of
 
 ## Validating the transition probability data
 
-The transition probability data should be validated first. This is what
-the function `validate_tp_source` is for. The transition probabilities should be
-organised in quite a sepcific way to work with this package, which the validator
+The transition probability data should be validated first. This is what the
+function `validate_tp_source` is for. The transition probabilities should be
+organised in quite a specific way to work with this package, which the validator
 function will help you to arrive at. If we use the same example dataset we used
 for the vignette `sparse-matrix-extrapolation`, we can validate it and then
 explore what we need to do next:
@@ -274,19 +365,21 @@ This has some important features:
 1. The first level elements are health states
 2. The first level elements are in order, going from first to last tunnel
 3. Each first level element contains transition probabilities to all other
-   subsequent tunnels, even if zero probability (these can be NULL but must
-exist to use the validator function). This means length goes down by 1 for each
-successive tunnel
-4. element wise sums of everything in each 1st level element (i.e., each health
-   state) are all $\le 1$
-5. the names of the elements all correspond to each other appropriately, no
+   tunnels and the pre-tunnels (these can be excluded if not needed)
+4. Element wise sums of everything in each 1st level element (i.e., each health
+   state) are all $\le 1$ such that the rows still sum to 1.
+5. The names of the elements all correspond to each other appropriately, no
    differences or spelling mistakes are allowed!
 
 When we validate against these rules, the function returns us an object that can
-be used to populate `m1` and `m2` (in this case the same as the data going in):
+be used to populate `m1` and `m2`:
 
 ```{r validate_transition_probabilities}
-valid_tp <- validate_tp_source(tp_source = tp_source)
+valid_tp <- validate_tp_source(
+  tp_source = tp_source,
+  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L),
+  state_names = c(names(tp_source), "die")
+)
 lobstr::tree(
   rapply(valid_tp, function(x) round(x, 2), how = "list")
 )
@@ -338,42 +431,46 @@ compared to:
 
 ```{r validate_transition_probabilities_with_nulls}
 # Fills in the blanks if they are NULLs
-valid_tp <- validate_tp_source(tp_source = tp_source)
+valid_tp <- validate_tp_source(
+  tp_source = tp_source,
+  tunnel_lengths = rep(th_cyc, length(tp_source) - 1L),
+  state_names = c(names(tp_source), "die")
+)
 lobstr::tree(
   rapply(valid_tp, function(x) round(x, 2), how = "list")
 )
 ```
 
-
-However, the function will give you an error if you miss the elements out
-completely. This prevents any kind of corner-cutting when specifying the model
-and ensures that you are very carefully putting things together.
+Missing destination names within an inner list are auto-added as 0. Omitting an
+entire 1st-level element (a whole state) will return an error.
 
 
 ## A note on order of operations
 
-The last step before entering the data into `M` is to make sure that
-`valid_tp`, which is valid in and of itself, corresponds to the specification
-of `M`.  
+The last step before entering the data into M is to make sure that `valid_tp`,
+which is valid in and of itself, corresponds to the specification of `M`.
 
-Well, if we reverse the order of operations, we can make the process automatic
-by using `valid_tp` to tell `specify_m` the inputs it needs. These are:
+Well, if we reverse the order of operations, we can make the process more
+straightforward by using `valid_tp` to inform some of the inputs `specify_m` needs.
+These are:
 
-- `n_cycles`
-- `n_tunnels`
+- `tunnel_lengths`
 - `pre_tunnel_states`
 
-`n_cycles` can be derived from `valid_tp` because all 2nd level elements have
-the same length. However, the other two inputs `n_tunnels` and
-`pre_tunnel_states` must be determined by the user, as the structure of the data
-is identical whether or not a state is a pre-tunnel. There are the same amount
-of destination states, and the `tp` vectors have the same lengths, names and so
-on.   
+Unlike the old `n_cycles` parameter, `tunnel_lengths` cannot be derived
+automatically from the transition probability data, because different tunnels
+may have different lengths — that is a modelling choice, not something inferable
+from TP vector structure. The number of tunnels is not a separate argument; it
+is implicit in `length(tunnel_lengths)`.
 
-Yet, it is still most robust to derive the validated `tp` data first, and then
-specify `M`, because during that, some additional validation of `n_tunnels` and
-`pre_tunnel_states` can be conducted. For instance, in this model framework,
-there must be at least one tunnel, and one pre-tunnel state.
+`pre_tunnel_states` must also be determined by the user, as the structure of the
+TP data alone does not distinguish pre-tunnel states from tunnel states. There
+are the same number of destination states, and the tp vectors have the same
+shapes and names regardless of whether a state is pre-tunnel or not.
+
+It is still most robust to validate the tp data first, and then specify `M`,
+because during validation some structural checks — such as requiring at least
+one tunnel and one pre-tunnel state — are conducted.
 
 In most oncology settings, only the first state can be a pre-tunnel state
 because the transition from e.g., off-treatment in first line to any subsequent
@@ -383,8 +480,7 @@ Yet for this example, **we say that only `on_1l` is a pre-tunnel state**.
 
 ```{r specify_m_from_valid_tp}
 m_spec <- specify_m(
-  n_cycles = 50,
-  n_tunnels = length(valid_tp) - 1,
+  tunnel_lengths = rep(th_cyc, length(valid_tp) - 1),
   pre_tunnel_states = 1
 )
 ```
@@ -421,7 +517,7 @@ In this case:
 - `52` is starting `on_2l`
 - `102` is starting `off_2l`
 - `152` is starting `bsc`
-- `203` is death
+- `202` is death
 
 Therefore we can easily make our list like this:
 
@@ -460,8 +556,9 @@ computation later on. To check all sum to 1 (which they must given the 1 - sum()
 in the above!):
 
 ```{r assert_m1_sums}
+# assert that all m1 rows sum to 1 for all model cycles:
 assertthat::assert_that(
-  all(unlist(lapply(m1_list, sum)) == 1),
+  all(unlist(lapply(m1_list, function(x) round(sum(x), 1e-14))) == 1),
   msg = "m1 rows do not sum to 1"
 )
 ```
@@ -480,10 +577,25 @@ step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
 # validate inputs and generate the full matrix m from one function
 m <- generate_m_list(
   m_specification = m_spec,
-  transition_prob_list = tp_source
+  transition_prob_list = tp_source,
+  first_state_name = "on_1l"
 )
 ```
 
+Note that this function automatically filters out probabilities entered as zero.
+This then avoids unnecessary computation when running extrapolations, which
+become more important in e.g., probabilistic settings. When running a
+probabilistic sensitivity analysis, one would need to generate `tp_source` `n`
+times, where `n` is the number of iterations, and then generate `m` for each
+iteration. Therefore, the efficiency of this step is important to consider.
+
+If you want to check that all rows sum to 1 you can do things like this:
+`rowSums(m$m2)`. You *should* see that the first one is zero, and all the others
+are exactly 1, like this:
+
+```{r print_rowsums}
+Matrix::rowSums(m$m2)
+```
 
 
 # Extrapolation
@@ -502,13 +614,14 @@ m2 <- m$m2
 # extrapolate the model:
 for (cyc in seq_len(th_cyc) + 1) {
   pop[, cyc] <-
-    as.numeric(pop[1, cyc - 1] %*% m1[[cyc - 1]]) +
+    as.numeric(pop[seq_len(m_spec$pre_tunnels), cyc - 1] %*% m1[[cyc - 1]]) +
     as.numeric(pop[, cyc - 1] %*% m2)
 }
 ```
 
-That's it, for the most part. The next step is consolidating information from
-this matrix `pop`, which has some useful properties.
+Believe it or not, that's the Markov model done, for the most part. The next
+step is consolidating information from this matrix `pop`, which has some useful
+properties.
 
 ## Properties of `pop`
 
@@ -542,7 +655,7 @@ entered the row numbers manually to help you see the blocks for yourselves. Note
 that the time horizon is 50 cycles in this example:
 
 ```{r plot_tunnel_pops}
-plot(1 - pop[203, ],
+plot(1 - pop[202, ],
   type = "l",
   col = "black",
   xlab = "Cycle", ylab = "Tunnel 1 Population",
@@ -551,7 +664,7 @@ plot(1 - pop[203, ],
 lines(colSums(pop[2:51, ]), type = "l", col = "grey80")
 lines(colSums(pop[52:101, ]), type = "l", col = "red")
 lines(colSums(pop[102:151, ]), type = "l", col = "blue")
-lines(colSums(pop[152:202, ]), type = "l", col = "green")
+lines(colSums(pop[152:201, ]), type = "l", col = "green")
 ```
 
 
@@ -570,51 +683,83 @@ This lets you plot something more familiar, but only if you divide the values by
 their first element. Without that, it looks strange:
 
 ```{r plot_d_unadjusted}
-plot(1 - pop[203, ],
+plot(
+  1 - pop[202, ],
   type = "l",
   col = "black",
-  xlab = "Cycle", ylab = "Tunnel 1 Population",
+  xlab = "Cycle",
+  ylab = "Within-tunnel survival",
   main = "Tunnel Populations over Time"
 )
 lines(rowSums(pop[2:51, ]), type = "l", col = "grey80")
 lines(rowSums(pop[52:101, ]), type = "l", col = "red")
 lines(rowSums(pop[102:151, ]), type = "l", col = "blue")
-lines(rowSums(pop[152:202, ]), type = "l", col = "green")
+lines(rowSums(pop[152:201, ]), type = "l", col = "green")
 ```
 
 But if you adjust it for the proportion of the initial cohort that ever entered
 each tunnel, you get something more familiar:
 
 ```{r plot_d_adjusted}
-plot(1 - pop[203, ],
+plot(
+  1 - pop[202, ],
   type = "l",
   col = "black",
-  xlab = "Cycle", ylab = "Tunnel 1 Population",
+  xlab = "Cycle",
+  ylab = "Within-tunnel survival",
   main = "Tunnel Populations over Time"
 )
 lines(rowSums(pop[2:51, ]) / sum(pop[2, ]), type = "l", col = "grey80")
 lines(rowSums(pop[52:101, ]) / sum(pop[52, ]), type = "l", col = "red")
 lines(rowSums(pop[102:151, ]) / sum(pop[102, ]), type = "l", col = "blue")
-lines(rowSums(pop[152:202, ]) / sum(pop[152, ]), type = "l", col = "green")
+lines(rowSums(pop[152:201, ]) / sum(pop[152, ]), type = "l", col = "green")
 ```
 
 This is the **within-tunnel survival curve** for each tunnel, which is much more
 intuitive, and is more likely to be comparable to some external data for
-external validation purposes.  
+external validation purposes. For instance, if you have progression-free
+survival for patients entering 3rd line therapy, you need the line to start from
+100%, not the proportion of patients in your model that entered that state.
 
-However, one warning here is that the source Kaplan-Meier used to inform the
-transition probabilities for these tunnel states **will not align** with these
-curves. This is because the appropriate endpoint for informing the transition
-probabilities needs to have carefully designed censoring rules to isolate the
-hazard of a specific transition. Therefore, these curves, which also include
-exiting the state for _any_ reason (not just one specific event) should be
-compared to Kaplan-Meier which does not e.g., censor for death.  
+However, **one critical warning** here is that the source Kaplan-Meier used to
+inform the transition probabilities for these tunnel states **will not align**
+with these curves. This is because the appropriate endpoint for informing the
+transition probabilities needs to have carefully designed censoring rules to
+isolate the hazard of a specific transition. Therefore, these curves, which also
+include exiting the state for _any_ reason (not just one specific event) should
+be compared to Kaplan-Meier which **does not e.g., censor for death**. In other
+words, these extrapolations should be compared to within-state survival, not
+e.g., time to progression. 
 
-As long as you carefully think about what data these lines should be compared
-to first, you can use these survival at time `d` for each tunnel plots to
-internally or even externally validate your model's extrapolation of clinical
-outcomes.
+An example of appropriate Kaplan-Meier setup for e.g., a 3rd line therapy would
+be (all from index date of initiating 3rd line):
 
+- Kaplan-Meier **informing transition probabilities**
+  - Time to initiation of 4th line therapy censoring for death and patient no treatment decision
+  - time to patient no treatment decision censoring for death and 4th line initiation
+  - Time to death censoring for 4th line initiation and patient no treatment decision
+- Kaplan-Meier **for validation**
+  - 4th line free survival
+  - Patient no treatment decision free survival
+  - Overall survival
+
+As you can see this can be quite the task for a statistics department, as they
+have to carefully handle their dataset to correctly derive all the event and
+censor definitions and implement them correctly. However, when done correctly,
+the final traces (starting from 100% survival) should match up with the
+validation Kaplan-Meier curves closely. It is possible that some straying will
+be visible, especially towards the tail of the available follow up. This is
+often because the data is being spread quite thin due to all the censoring on
+the individual endpoints. However, if the trial is quite large, this will be
+mostly mitigated.
+
+`treatseqr` is about using these probabilities and not about deriving them, so
+we will limit our explanation here and assume that users know what they are
+doing with trial statistics.
+
+As a last word on the matter: as long careful consideration is made around the
+data these lines should be compared to first, these plots can be valuable
+sources of both internal and external validation.
 
 ## Functions to generate outputs
 
@@ -631,7 +776,7 @@ extrapolates the model, returning the full trace for you to do with as you
 please:
 
 ```{r extrapolate}
-trace <- extrapolate_heseqmat(m = m, spec = m_spec)
+trace <- extrapolate_treatseqr(m = m, spec = m_spec)
 colSums(trace)
 ```
 
@@ -640,7 +785,7 @@ colSums(trace)
 
 After the trace runs, we need to consolidate the results into useful outputs.
 This usually includes both the vertical and horizontal sums (see above). The
-function `consolidate_heseqmat_trace` does this for you, returning a list
+function `consolidate_treatseqr_trace` does this for you, returning a list
 containing both.
 
 Interestingly, the bounds of the states within `trace` always correspond to the
@@ -652,14 +797,13 @@ to which state:
 - `pre_tunnels`: The first `pre_tunnels` rows in `trace` are 1 row/column each
 and these are states which have a basis in time of `t` not `d`, so are simply
 the appropriate row (e.g., `trace[1, ]` is the first health state over time).
-- Tunnels: Each tunnel has `n_cycles` rows/columns, and these can be summed to
-produce what we need. Note that we can do horizontal and vertical sums here -
-the bounds are just the transpose of each other.
+- Tunnels: each tunnel has rows/columns corresponding to specific sizing, and
+these can be summed to produce what we need.
 - Death: The last row/column is death, which is absorbing.
 
 
 ```{r consolidate}
-trace <- consolidate_heseqmat_trace(
+trace <- consolidate_treatseqr_trace(
   full_trace = trace,
   spec = m_spec,
   state_names = m$state_names

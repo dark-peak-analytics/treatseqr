@@ -9,13 +9,15 @@ generate the sparce matrices required to extrapolate the sequencing model}
 generate_m_list(
   m_specification,
   transition_prob_list,
-  first_state_name = "initial"
+  first_state_name = "initial",
+  state_names = NULL
 )
 }
 \arguments{
-\item{m_specification}{A list containing model parameters, including:
+\item{m_specification}{A list containing model parameters, as returned by
+\code{specify_m()}. Required fields:
 \itemize{
-\item n_cycles: Number of model cycles.
+\item tunnel_lengths: Integer vector of per-tunnel cycle counts.
 \item pre_tunnels: Number of pre-tunnel states.
 \item matrix_size: Size of the transition matrix.
 \item m1_ijx: Coordinate matrix for m1.
@@ -24,6 +26,17 @@ generate_m_list(
 
 \item{transition_prob_list}{A list of transition probabilities for each
 state.}
+
+\item{first_state_name}{A character string naming the initial (pre-tunnel)
+state. Defaults to \code{"initial"}.}
+
+\item{state_names}{An optional character vector used to validate
+\code{transition_prob_list}. It must equal
+\code{names(transition_prob_list)} in the same order, with the absorbing
+(death) state appended as the last element. It cannot be used to reorder
+states: the matrix layout produced by \code{specify_m()} is positional. If
+not supplied, state names and ordering are inferred from
+\code{transition_prob_list} itself.}
 }
 \value{
 A list with two elements:
@@ -49,5 +62,9 @@ transition probabilities.
 The function validates the transition probability list, splits it into
 pre-tunnel and tunnel components, and constructs the corresponding sparse
 matrices. It ensures that row sums are appropriate and asserts that the
-tunnel matrix rows sum to 1.
+tunnel matrix rows sum to 1. Note that it filters out zero probabilities
+before entering them into the sparse matrices. This avoids those values being
+put into the matrix and then used in the matrix multiplications, which would
+ultimately always result in values of 0 being propagated. This then has a
+computational gain for no cost.
 }

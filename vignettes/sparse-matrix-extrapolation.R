@@ -1,31 +1,13 @@
----
-title: "Sparse Matrix Extrapolation"
-output: rmarkdown::html_vignette
-vignette: >
-  %\VignetteIndexEntry{Sparse Matrix Extrapolation}
-  %\VignetteEngine{knitr::rmarkdown}
-  %\VignetteEncoding{UTF-8}
----
-
-```{r, include = FALSE}
+## ----include = FALSE----------------------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
-```
 
-```{r setup}
+## ----setup--------------------------------------------------------------------
 library(treatseqr)
-```
 
-This vignette demonstrates how to use sparse matrices to extrapolate "tunnel states" in a health economics context.
-The transitions for the initial state (prior to the successive tunnels) change every cycle, and therefore the matrix multiplication is broken up into a component for the top row of the matrix `M` (`m1` for this top row), and another component for the successive tunnels (called `m2`).
-
-## Parameters
-
-We start by defining the time horizon (`th_cyc`) and the source transition probabilities. These probabilities would typically come from hazard extrapolations (e.g., from `flexsurv`).
-
-```{r params}
+## ----params-------------------------------------------------------------------
 th_cyc <- 50
 
 # some simple time varying transition probabilities. in reality these will come
@@ -69,15 +51,8 @@ tp_list <- lapply(tp_source, function(treatment_line) {
 lapply(tp_list, function(treatment_line) {
   Reduce(`+`, treatment_line)
 })
-```
 
-## Matrix Construction
-
-We construct two matrices:
-1. `m1`: Represents the transitions from the initial state to all possible destinations. This changes every model cycle.
-2. `m2`: Represents the transitions for the successive tunnels.
-
-```{r matrix_construction}
+## ----matrix_construction------------------------------------------------------
 # Make an example m1 and m2.
 # NOTE: m1 is the transition from initial state to all possible destinations.
 # In this case patients can go from on_1l to any other state. nevertheless, this
@@ -166,13 +141,8 @@ m2 <- Matrix::sparseMatrix(
   dims = c(matrix_size, matrix_size)
 )
 m2[matrix_size, matrix_size] <- 1 # absorbing death state
-```
 
-## Visualization of Sparsity Pattern
-
-We can visualize the sparsity pattern of the tunnel matrix `m2`.
-
-```{r plot_sparsity, fig.width=7, fig.height=6}
+## ----plot_sparsity, fig.width=7, fig.height=6---------------------------------
 # for illustration, let's make a plot of m2 to show the pattern:
 transition_df <- data.frame(
   i = unlist(i_m2, use.names = FALSE),
@@ -198,13 +168,8 @@ ggplot2::ggplot(
     color = "Tunnel"
   ) +
   ggplot2::theme_minimal()
-```
 
-## Simulation
-
-Now we perform the simulation by iterating through the cycles.
-
-```{r simulation}
+## ----simulation---------------------------------------------------------------
 pop <- matrix(0, nrow = matrix_size, ncol = th_cyc)
 pop[1, 1] <- 1
 for (cyc in 2:th_cyc) {
@@ -217,13 +182,8 @@ assertthat::assert_that(
   all(abs(colSums(pop) - 1) < 1e-10),
   msg = "All time points should have a population that sums to 1"
 )
-```
 
-## Results Analysis
-
-We can aggregate the tunnel populations to produce a Markov trace and visualize the results.
-
-```{r results}
+## ----results------------------------------------------------------------------
 # Summing up tunnel populations to produce a trace:
 markov_trace <- data.table::data.table(
   cycle = 1:th_cyc,
@@ -273,11 +233,8 @@ plot_trace <- ggplot2::ggplot() +
     labels = scales::percent_format(accuracy = 1),
     expand = ggplot2::expansion(mult = c(0, 0.05))
   )
-```
 
-Finally, we visualize the state residency over time for each tunnel state alongside the Markov trace.
-
-```{r combined_plot, fig.width=10, fig.height=8}
+## ----combined_plot, fig.width=10, fig.height=8--------------------------------
 # state residency plots by d (time within tunnel state) for each tunnel state
 
 matplot_gg <- function(
@@ -360,4 +317,4 @@ combined_plot <- plot_trace /
     ))
 
 combined_plot
-```
+

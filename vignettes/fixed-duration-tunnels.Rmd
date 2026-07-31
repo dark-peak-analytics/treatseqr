@@ -1,0 +1,312 @@
+---
+title: "Fixed-Duration Tunnel States with `treatseqr`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Fixed-Duration Tunnel States with `treatseqr`}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(treatseqr)
+```
+
+# Introduction
+
+This vignette demonstrates a more complex model structure using `treatseqr`,
+combining fixed-duration tunnel states with full-length tunnel states in the
+same model.
+
+The scenario is an oncology treatment sequence in which patients on first-line
+therapy may enter a surgical intervention. The surgery tunnel has a fixed
+duration of 3 cycles, after which patients either respond (entering a
+full-length responder tunnel with good outcomes) or do not respond (entering a
+second fixed-duration tunnel representing a period of poor post-surgical
+recovery). Patients who do not respond face elevated mortality and may
+accumulate in a **holding state** at the end of the non-responder tunnel.
+Finally, at any point patients may elect to forgo further active treatment and
+enter a palliative full-length tunnel with poor outcomes.
+
+The five model states are:
+
+| State | Type | Tunnel length |
+|---|---|---|
+| `on_trt` | Pre-tunnel | — |
+| `surgery` | Fixed-duration tunnel | 3 cycles |
+| `failed_surg` | Fixed-duration tunnel (holding state) | 2 cycles |
+| `responder` | Full-length tunnel | `th` cycles |
+| `palliative` | Full-length tunnel | `th` cycles |
+
+Because tunnels 1 and 2 are short and tunnels 3 and 4 span the full model
+horizon, this model requires the variable-length `tunnel_lengths` argument.
+
+# Model specification
+
+We set the time horizon to 20 cycles and define the tunnel lengths individually:
+
+```{r specify_m}
+th <- 20L
+
+m_spec <- specify_m(
+  tunnel_lengths    = c(3L, 2L, th, th),
+  pre_tunnel_states = 1L
+)
+
+m_spec$matrix_size
+```
+
+The total matrix size is `r m_spec$matrix_size`: 1 pre-tunnel state + 3 + 2 +
+20 + 20 tunnel cycles + 1 death state.
+
+# Transition probabilities
+
+The transition probability source list must follow the standard `treatseqr`
+conventions: states listed in sequence order; each state contains transition
+probability vectors to all other states (or `NULL`/omit for structural zeros).
+With variable-length tunnels, each vector must match the length of the
+**source** state's tunnel (or the pre-tunnel horizon `th` for `on_trt`).
+
+Just to make things very simple, we just use some very simple fixed transitions
+this time, but these could be made time-dependent here without any changes
+required in the rest of the code:
+
+```{r define_tps}
+tp_source <- list(
+  # ----------------------------------------------------------------
+  # on_trt (pre-tunnel): vectors of length th
+  # ----------------------------------------------------------------
+  on_trt = list(
+    surgery     = seq(0.05, 0.02, length.out = th),
+    failed_surg = NULL,
+    responder   = NULL,
+    palliative  = rep(0.02, th),
+    die         = rep(0.01, th)
+  ),
+
+  # ----------------------------------------------------------------
+  # surgery (fixed-duration, 3 cycles):
+  #   d = 1, 2 : patients recover — low exit probability
+  #   d = 3    : decision-tree node — p_stay = 0, all probability
+  #              allocated to response, non-response, or death
+  # ----------------------------------------------------------------
+  surgery = list(
+    failed_surg = c(0, 0, 0.35),
+    responder   = c(0, 0, 0.55),
+    palliative  = c(0.01, 0.01, 0),
+    die         = c(0.04, 0.04, 0.10)
+  ),
+
+  # ----------------------------------------------------------------
+  # failed_surg (fixed-duration, 2 cycles):
+  #   d = 1 : elevated mortality; patients may opt to palliative
+  #   d = 2 : even higher mortality; p_stay = 0.70 (holding state)
+  #           — patients who have not yet exited accumulate here
+  #           with the same d = 2 mortality applied every subsequent
+  #           cycle
+  # ----------------------------------------------------------------
+  failed_surg = list(
+    responder  = c(0, 0),
+    palliative = c(0.10, 0.10),
+    die        = c(0.15, 0.20)
+  ),
+
+  # ----------------------------------------------------------------
+  # responder (full-length, th cycles): good outcomes
+  # ----------------------------------------------------------------
+  responder = list(
+    palliative = seq(0.02, 0.05, length.out = th),
+    die        = seq(0.01, 0.05, length.out = th)
+  ),
+
+  # ----------------------------------------------------------------
+  # palliative (full-length, th cycles): poor outcomes
+  # ----------------------------------------------------------------
+  palliative = list(
+    die = rep(0.25, th)
+  )
+)
+```
+
+# Validating transition probabilities
+
+Before populating the matrix we validate the source list. Passing
+`tunnel_lengths` tells the validator which vector length to expect for each
+tunnel state.
+
+```{r validate}
+valid_tp <- validate_tp_source(
+  tp_source      = tp_source,
+  tunnel_lengths = c(3L, 2L, th, th)
+)
+
+lobstr::tree(
+  rapply(valid_tp, function(x) round(x, 3), how = "list")
+)
+```
+
+The NULL entries for `on_trt$failed_surg` and `on_trt$responder` have been
+replaced with zero vectors of length th, and `failed_surg$responder` filled with
+zeros of length 2. In addition, the validator expands every state's destination
+set to the full canonical set — backwards slots (e.g. `responder$surgery`,
+`failed_surg$surgery`) are auto-added as zero vectors.
+
+# The decision-tree node at the end of `surgery`
+
+At `d = 3` — the last cycle of the surgery tunnel — the transition probability
+vectors are constructed so that `p_stay = 0`:
+
+```{r decision_node}
+# Probabilities out of surgery at each tunnel cycle d (rows = destinations):
+surgery_exit <- do.call(rbind, lapply(valid_tp$surgery, identity))
+rownames(surgery_exit) <- names(valid_tp$surgery)
+round(t(surgery_exit), 3)
+```
+
+Column sums confirm that `d = 3` is a true decision-tree node (sums to 1,
+leaving no residual probability of remaining in the surgery tunnel):
+
+```{r decision_node_check}
+rowSums(round(t(surgery_exit), 3))
+```
+
+This pattern — zeroing `p_stay` at the last tunnel cycle and distributing all
+remaining probability across destination states — is the recommended approach
+for fixed-duration tunnel states with a defined exit point.
+
+# The holding state at the end of `failed_surg`
+
+The `failed_surg` tunnel illustrates the opposite design choice. At `d = 2`
+(the last defined cycle), a substantial `p_stay` remains:
+
+```{r holding_state}
+# Probabilities out of failed_surg at each tunnel cycle d:
+failed_exit <- do.call(rbind, lapply(valid_tp$failed_surg, identity))
+rownames(failed_exit) <- names(valid_tp$failed_surg)
+round(t(failed_exit), 3)
+```
+
+```{r holding_state_pstay}
+# Implied p_stay at each cycle of failed_surg:
+1 - rowSums(round(failed_exit, 3))
+```
+
+Patients who have not exited `failed_surg` by `d = 2` remain there until going
+to palliative care or death, with the `d = 2` transition probabilities
+re-applied each subsequent cycle. This is conceptually equivalent to an
+exponential extrapolation in the holding state — the same probability of dying
+(`0.20`) or transitioning to palliative (`0.10`) is applied every cycle to
+whoever remains. This is an intentional modelling choice which a modeller may
+want to employ. Note that instead of this, one could simply add a new tunnel and
+introduce a decision-tree node at `d = 2` to force all patients out of
+`failed_surg` at that point. The choice depends on the clinical scenario and
+modelling goals. The benefit of this choice is it reduces the size of `M`,
+improving computational efficiency, but it does simplify the disease modelling.
+
+If instead patients should be guaranteed to exit at `d = 2`, set
+`die[2] + palliative[2] = 1` and `p_stay = 0`, following the same
+decision-tree node pattern used for `surgery`. Then, Kaplan-Meier for surgical
+non-response outcomes could be used to power what happens to those patients in
+the model.
+
+# Generating M and extrapolating
+
+```{r generate_and_extrapolate}
+m <- generate_m_list(m_specification = m_spec, transition_prob_list = valid_tp)
+trace <- extrapolate_treatseqr(m = m, spec = m_spec)
+```
+
+A quick sanity check — column sums of the trace should equal 1 throughout
+(all population accounted for):
+
+```{r check_trace}
+colSums(trace)
+```
+
+# Consolidation and outputs
+
+```{r consolidate}
+res <- consolidate_treatseqr_trace(
+  full_trace  = trace,
+  spec        = m_spec,
+  state_names = m$state_names
+)
+```
+
+## State populations over time (`t`)
+
+```{r plot_t}
+graphics::matplot(
+  res$t,
+  type = "l", lty = 1,
+  xlab = "Cycle", ylab = "Population",
+  main = "State populations over absolute time"
+)
+graphics::legend(
+  "topright",
+  legend = colnames(res$t),
+  col    = seq_len(ncol(res$t)),
+  lty    = 1,
+  cex    = 0.8
+)
+```
+
+The `failed_surg` population decays slowly compared with `surgery` because of
+the holding state — patients continue to accumulate at `d = 2` across many
+cycles before eventually dying or transitioning to palliative.
+
+## Within-tunnel survival (`d`) no longer works in this setting!
+
+As mentioned in the documentation, the `d` output is only meaningful when
+patients cannot accumulate inside of one `d` for one tunnel state. In this
+"holding pattern" conceptual model (which is somewhat of an edge-case), you can
+no longer derive within-tunnel survival curves because the `d` dimension is no
+longer a pure measure of time spent in the state. The same is also technically
+true (but less pronounced) in the setting whereby a patient can loop back into a
+previous tunnel state (e.g., a relapse followed by non-progression back to the
+previous tunnel).
+
+```{r plot_d}
+graphics::matplot(
+  res$d,
+  type = "l", lty = 1,
+  xlab = "Cycles since tunnel entry", ylab = "Proportion remaining",
+  main = "Within-tunnel survival"
+)
+graphics::legend(
+  "topright",
+  legend = colnames(res$d),
+  col    = seq_len(ncol(res$d)),
+  lty    = 1,
+  cex    = 0.8
+)
+```
+
+The `surgery` within-tunnel survival curve drops sharply to zero at `d = 3`
+(the decision-tree node forces everyone out), whereas `failed_surg` shows a
+much slower tail as patients accumulate in the holding state at `d = 2`. The
+full-length tunnels (`responder`, `palliative`) display smoother declines
+reflecting their per-cycle mortality rates.
+
+Because this structure is a **strictly progressive** structure not allowing
+patients to move back to previous tunnels, the only violation here is
+`failed_surg`, because patients are accumulating at `d = 2` and thus `d` is no
+longer a pure measure of time spent in the state. In a more complex model with
+loops back to previous tunnels, multiple states could violate this assumption,
+but the violation would be harder to see. this is because it may be much more
+gradual and smooth, depending on the probability each cycle for patients to loop
+back to a previous tunnel.
+
+## Expected time in state
+
+The total expected cycles spent in each state across the cohort:
+
+```{r expected_time}
+round(colSums(res$t), 2)
+```
