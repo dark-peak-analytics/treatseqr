@@ -14,8 +14,9 @@
 #'     canonical set) in canonical order. Missing destinations are inserted as
 #'     NULL, which are subsequently replaced with zero vectors respecting
 #'     `tunnel_lengths`.
-#'     \item If state_names is supplied, it defines the canonical set and order.
-#'     Otherwise it is inferred from tp_source.
+#'     \item If state_names is supplied, it is used purely as a cross-check:
+#'     it must equal names(tp_source) in order, with the death state appended
+#'     last. Otherwise the canonical set and order are inferred from tp_source.
 #'     \item All probability vectors must have consistent lengths (see
 #'     \code{tunnel_lengths} below).
 #'     \item Probabilities must be non-negative and sum to <= 1 (row-wise).
@@ -36,12 +37,12 @@
 #'   \code{length(tp_source) - length(tunnel_lengths)}, pre-tunnel TP vectors
 #'   must all share a common length, and each tunnel \code{k}'s vectors must
 #'   have length \code{tunnel_lengths[k]}.
-#' @param state_names An optional string vector which is used as the "ground
-#' truth" for validating the names of the inner lists in `tp_source`, in order.
-#' Both the names of the states and their ordering will use this if supplied. If
-#' not supplied, then state names AND ORDERING will be inferred from the names
-#' of \code{tp_source} itself.The last element must be the absorbing (death)
-#' state. All names present in \code{tp_source} must appear in state_names.
+#' @param state_names An optional character vector used to validate
+#' \code{tp_source}. It must equal \code{names(tp_source)} in the same order,
+#' with the absorbing (death) state appended as the last element. It cannot be
+#' used to reorder states: the matrix layout produced by \code{specify_m()} is
+#' positional. If not supplied, state names and ordering are inferred from
+#' \code{tp_source} itself.
 #'
 #' @return The sanitized `tp_source` list where all `NULL` entries have been
 #'   replaced with vectors of zeros of the correct length.
@@ -75,26 +76,75 @@ validate_tp_source <- function(
     msg = "All inner lists in tp_source must be named"
   )
 
+  if (!is.null(tunnel_lengths)) {
+    if (any(tunnel_lengths == 1)) {
+      n_pre <- length(tp_source) - length(tunnel_lengths)
+      which_one_tunnel <- which(tunnel_lengths == 1) + n_pre
+      msg <- paste0(
+        "Tunnel lengths of 1 are allowed, but the p_stay will be 0. Patients ",
+        "will transition out of the tunnel after 1 cycle. You have assigned ",
+        paste(sQuote(names(tp_source)[which_one_tunnel]), collapse = ",  "),
+        " to have a tunnel length of 1."
+      )
+      message(msg)
+    }
+  }
+
+  # Death name makes sense. it is the only thing in tp_source that doesn't
+  # have a state (as it is absorbing)
+  all_dests <- unique(unlist(lapply(tp_source, names)))
+  death_name <- setdiff(all_dests, names(tp_source))
+  assertthat::assert_that(
+    length(death_name) == 1L,
+    msg = "Death state does not appear only as a destination (absorbing)"
+  )
+
   # Determine canonical state order
   if (!is.null(state_names)) {
     assertthat::assert_that(
       is.character(state_names),
-      length(state_names) >= n_states + 1L,
+      length(state_names) == n_states + 1L,
       msg = paste0(
-        "'state_names' must be a character vector with at least ",
-        "length(tp_source) + 1 elements (all states plus the death state)"
+        "'state_names' must have exactly length(tp_source) + 1 elements ",
+        "(all transient states plus the death state)"
       )
     )
     assertthat::assert_that(
-      all(names(tp_source) %in% state_names),
-      msg = "All names in 'tp_source' must be present in 'state_names'"
+      identical(state_names, c(names(tp_source), death_name)),
+      msg = paste0(
+        "'state_names' must match names(tp_source) in the same order, with the ",
+        "absorbing (death) state appended last. The matrix layout produced by ",
+        "specify_m() is positional and cannot be reordered via state_names."
+      )
     )
+
     canonical_names <- state_names
   } else {
     assertthat::assert_that(
       length(tp_source[[1L]]) >= 1L,
       msg = "First element of tp_source must have at least one destination (the death state)"
     )
+
+    # Because user hasn't given the state names explicitly we must infer. We
+    # have already deduced the name of the death transition so we now must
+    # validate that it is in all elements of tp_source, and is the last element
+    # in each.
+    assertthat::assert_that(
+      all(vapply(
+        tp_source,
+        function(x) {
+          death_name == names(x)[length(names(x))]
+        },
+        logical(1L)
+      )),
+      msg = paste0(
+        "The state ",
+        sQuote(death_name),
+        " must be the LAST element in each element of ",
+        sQuote("tp_source")
+      )
+    )
+
     # Infer: first-level names + last destination name of first state (= death)
     death_name <- tail(names(tp_source[[1L]]), 1L)
     canonical_names <- c(names(tp_source), death_name)
