@@ -198,11 +198,13 @@ test_that("validate_tp_source fills NULL in variable-length tunnel with correct 
       die = rep(0.10, 4)
     ),
     tun2 = list(
-      die = rep(0.20, 7)
+      die = rep(0.20, 5)
     )
   )
 
-  res <- validate_tp_source(tp, tunnel_lengths = c(4, 7))
+  # tunnel lengths stay variable but within the 6-cycle horizon set by the
+  # pre-tunnel vectors; a longer tunnel is now rejected as invalid input
+  res <- validate_tp_source(tp, tunnel_lengths = c(4, 5))
 
   expect_equal(res$pre$tun2, rep(0, 6))
   expect_equal(res$tun1$tun2, rep(0, 4))
@@ -280,4 +282,29 @@ test_that("validate_tp_source warns on explicitly supplied non-zero self-transit
     validate_tp_source(tp),
     "Self-transition for state 'a'"
   )
+})
+
+test_that("validate_tp_source rejects a tunnel longer than the time horizon", {
+  # The pre-tunnel horizon is the model's time horizon, so a 6-cycle tunnel in
+  # a 4-cycle model carries probabilities that can never be reached.
+  th <- 4L
+  tp <- list(
+    pre  = list(tun1 = rep(0.10, th), tun2 = rep(0.05, th), die = rep(0.02, th)),
+    tun1 = list(pre = rep(0, th), tun2 = rep(0.10, th), die = rep(0.05, th)),
+    tun2 = list(pre = rep(0, 6L), tun1 = rep(0.05, 6L), die = rep(0.10, 6L))
+  )
+  expect_error(
+    validate_tp_source(tp, tunnel_lengths = c(th, 6L)),
+    "cannot exceed the model time horizon"
+  )
+})
+
+test_that("validate_tp_source accepts tunnels shorter than the time horizon", {
+  th <- 6L
+  tp <- list(
+    pre  = list(tun1 = rep(0.10, th), tun2 = rep(0.05, th), die = rep(0.02, th)),
+    tun1 = list(pre = rep(0, th), tun2 = rep(0.10, th), die = rep(0.05, th)),
+    tun2 = list(pre = rep(0, 3L), tun1 = rep(0.05, 3L), die = rep(0.10, 3L))
+  )
+  expect_no_error(validate_tp_source(tp, tunnel_lengths = c(th, 3L)))
 })
