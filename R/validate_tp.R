@@ -229,6 +229,28 @@ validate_tp_source <- function(
       msg = "Could not determine pre-tunnel horizon (all pre-tunnel vectors are NULL or empty)"
     )
 
+    # The pre-tunnel horizon is the model's time horizon by definition, so a
+    # tunnel longer than it holds transition probabilities that can never be
+    # reached. Catch it here rather than letting it surface much later as an
+    # obscure error when the trace is consolidated.
+    too_long <- which(tunnel_lengths > th)
+    assertthat::assert_that(
+      length(too_long) == 0L,
+      msg = sprintf(
+        paste0(
+          "Tunnel length cannot exceed the model time horizon (%d cycles, ",
+          "taken from the pre-tunnel transition probability vectors). ",
+          "Offending tunnel(s): %s with length(s) %s."
+        ),
+        th,
+        paste(
+          sQuote(names(tp_source)[too_long + pre_tunnels]),
+          collapse = ", "
+        ),
+        paste(tunnel_lengths[too_long], collapse = ", ")
+      )
+    )
+
     # Pre-tunnel states all share th; tunnel k has length tunnel_lengths[k]
     expected_vec_lengths <- c(rep(th, pre_tunnels), tunnel_lengths)
   }
