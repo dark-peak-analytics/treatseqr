@@ -1,8 +1,11 @@
 Package: treatseqr
 Title: Health Economics Sequence Modelling with Sparse Matrices
-Version: 0.0.0.9000
+Version: 0.1.0.0000
 Authors@R: 
     person("Darren", "Burns", , "dburns@darkpeakanalytics.com", role = c("aut", "cre"))
+    person("Tristan", "Snowsill", , "t.m.snowsill@exeter.ac.uk", role = c("aut", "cre"))
+    person("Dawn", "Lee", , "D.Lee7@exeter.ac.uk", role = c("aut", "cre"))
+    person("Wael", "Mohammed", , "wmohammed@darkpeakanalytics.com", role = c("aut", "cre"))
 Description: Tools for health economics sequence modelling using sparse matrices, optimized for performance and memory efficiency.
 License: MIT + file LICENSE
 Encoding: UTF-8
