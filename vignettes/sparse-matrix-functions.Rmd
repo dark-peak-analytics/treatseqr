@@ -624,6 +624,7 @@ pre-tunnel state. `ex_tp[1:5, ,1]` looks like this, for example:
 [5,] 0.84 0.09591837 0.05408163    0    0 0.01
 ```
 
+As noted above, this is a more familiar Excel-like table, but it is actually 3d.
 
 ### A function to do this automatically
 
@@ -659,7 +660,7 @@ Matrix::rowSums(m$m2)
 
 # Extrapolation
 
-### Extrapolation using list method
+### Extrapolation using simple list method
 From this point it is very simple to generate a Markov trace using the list `m1`
 method, as we have a different matrix ready to go for every model cycle:
 
@@ -692,8 +693,38 @@ the population in the previous cycle to those people inside of each pre-tunnel
 state, and then divide these up using our probabilities of moving to different
 health states.
 
+The below is simplified a little because there is only one pre-tunnel state, but
+the intuition is the same for multiple pre-tunnel states.
 
+```{r extrapolate_3d}
+pop <- matrix(0, nrow = m_spec$matrix_size, ncol = th_cyc + 1)
+pop[1, 1] <- 1
+m1 <- ex_tp
+m2 <- m$m2
+m2t <- t(m2)
+pre_pos <- 1
+pre_dest <- m_spec$m1_ijx[, "j"]
 
+# extrapolation involves separating out the population and adding it up at the
+# end:
+for (cyc in seq_len(th_cyc) + 1) {
+  pop[, cyc] <- as.numeric(m2t %*% pop[, cyc - 1, drop = FALSE])
+  pop[pre_dest, cyc] <- pop[pre_dest, cyc] + (
+    pop[pre_pos, cyc - 1] * m1[cyc - 1, , 1]
+  )
+}
+```
+
+This approach is called a "scatter add", which is a highly efficient way of
+performing a targeted subset of a matrix multiplication. In effect, it is just
+working out the pre tunnel exits and entries and adding them into the matrix.
+
+Computationally, this scales up much better than having potentially thousands of
+sparse matrix objects each with thousands of columns in it. It gets really
+clever with multiple pre-tunnel states because if the 3rd dimension is dropped
+from the subsetting in `m1[cyc -1 , , 1]` then it will return the transition
+probabilities for cycle `cyc - 1` for all the pre-tunnel states to all the
+destination states in one go, and these will be organised row-wise.
 
 
 
