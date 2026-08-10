@@ -701,7 +701,7 @@ pop <- matrix(0, nrow = m_spec$matrix_size, ncol = th_cyc + 1)
 pop[1, 1] <- 1
 m1 <- ex_tp
 m2 <- m$m2
-m2t <- t(m2)
+m2t <- Matrix::t(m2)
 pre_pos <- 1
 pre_dest <- m_spec$m1_ijx[, "j"]
 
