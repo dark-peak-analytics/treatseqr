@@ -568,6 +568,65 @@ from `valid_tps`, which have already been validated against conditions like
 non-negativity and summing to 1. The above is just to prove that it is working
 correctly.
 
+### An alternative approach using addition
+
+A less obvious but substantially more computationally efficient approach
+leverages a dense 3d array of values for *all* the pre-tunnel states for all
+time cycles.
+
+This changes the way that the Markov trace is computed by leveraging the
+vectorised nature of the `R` language.
+
+In English, if we just have TPs for 1 cycle for all the pre-tunnel states in a
+vector, then we can avoid the need for computing an outer product entirely, and
+instead can use the extremely efficient base `R` mechanisms instead.
+
+Just for an example, let's pull out the transition positions and values from the
+pre-tunnel states, producing a more familiar Excel-like 2d table:
+
+```{r block_approach}
+ex_tp_position <- m1_coord[, "j"]
+ex_tp <- lapply(1:th_cyc, function(model_cycle) {
+  as.numeric(m1_list[[model_cycle]])[ex_tp_position]
+})
+ex_tp <- do.call(rbind, ex_tp)
+ex_tp <- array(unlist(ex_tp), dim = c(th_cyc, ncol(ex_tp), 1))
+```
+
+Because in this case, the number of pre-tunnel states is 1, we only have one of
+these tables. However, if we had more we would then have a 3rd dimension to the
+array, with the 3rd dimension being each pre-tunnel state.
+
+We can use the function `slice` on the `m1` coordinate matrix by the `i` column
+(row) because the first pre-tunnel is associated with the 1st row, the 2nd with
+the 2nd and so on until the tunnel sequence begins.
+
+So our data collation process is like this:
+
+- Use `slice` on the `i` column of our pre-tunnel coordinate matrix to get
+positional data for all pre-tunnel states. Target and destination columns should
+be the same in all of them, but not necessarily in the same order.
+- Cycle through the pre-tunnel states, collecting the transition probabilities
+together into a consistent order
+- Layer these together into a 3d array with 3rd dimension being pre-tunnel state
+
+Once we have this matrix, we can then change the method for extrapolating the
+Markov trace, which we will come to later. The data structure allows one to pull
+out e.g. the first 5 cycles of TPs for all destination states *from* the first
+pre-tunnel state. `ex_tp[1:5, ,1]` looks like this, for example:
+
+```
+     [,1]       [,2]       [,3] [,4] [,5] [,6]
+[1,] 0.84 0.10000000 0.05000000    0    0 0.01
+[2,] 0.84 0.09897959 0.05102041    0    0 0.01
+[3,] 0.84 0.09795918 0.05204082    0    0 0.01
+[4,] 0.84 0.09693878 0.05306122    0    0 0.01
+[5,] 0.84 0.09591837 0.05408163    0    0 0.01
+```
+
+
+### A function to do this automatically
+
 To make this a bit less cumbersome, we can use the function `generate_m_list`
 to do the above using the validated `tp` list for `m1` and `m2` all in one easy
 step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
@@ -600,7 +659,9 @@ Matrix::rowSums(m$m2)
 
 # Extrapolation
 
-From this point it is very simple to generate a Markov trace!
+### Extrapolation using list method
+From this point it is very simple to generate a Markov trace using the list `m1`
+method, as we have a different matrix ready to go for every model cycle:
 
 ```{r extrapolate_manual}
 # output population matrix:
@@ -622,6 +683,19 @@ for (cyc in seq_len(th_cyc) + 1) {
 Believe it or not, that's the Markov model done, for the most part. The next
 step is consolidating information from this matrix `pop`, which has some useful
 properties.
+
+### Extrapolation with 3d array method for `m1`
+
+
+With the array method, the approach is surprisingly simple. We can just subset
+the population in the previous cycle to those people inside of each pre-tunnel
+state, and then divide these up using our probabilities of moving to different
+health states.
+
+
+
+
+
 
 ## Properties of `pop`
 
