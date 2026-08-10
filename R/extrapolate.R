@@ -5,8 +5,13 @@
 #' over time.
 #'
 #' @param m A list containing the transition matrices:
-#'   - m1: A list of sparse matrices (one per cycle) for pre-tunnel states.
+#'   - m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
+#'     transition probabilities, indexed [cycle, pre-tunnel state, destination].
+#'     Destinations are in canonical order (all states, then death).
+#'   - m1_dest: Integer vector giving the column of the full matrix M that each
+#'     destination slot of m1 corresponds to.
 #'   - m2: A sparse matrix for tunnel states.
+#'   - state_names: Character vector of state names, death last.
 #' @param spec A model specification list containing:
 #'   - n_cycles: Number of model cycles.
 #'   - matrix_size: Size of the transition matrix.

@@ -22,7 +22,7 @@ over time.}
 matrices.}
 
 \item{m}{Optional list as returned by \code{generate_m_list()}. When
-supplied, its per-cycle pre-tunnel matrices (\code{m$m1}) are used to
+supplied, the 3d array of pre-tunnel transition probabilities are used to
 compute true time-in-state (sojourn) curves for the pre-tunnel columns of
 \code{d}, weighting each entry cohort by its size. When \code{NULL}, the
 pre-tunnel columns of \code{d} fall back to wall-time occupancy, which only
