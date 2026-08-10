@@ -91,30 +91,28 @@ generate_m_list <- function(
   # all states are tunnels after entering the sequence. These all go into m2
   tp_tun <- valid_tp[(pre_tun_states + 1):(n_states)]
 
-  # TPs will fit into m1 and m2 now. Compute p_stay for each state.
-  m1_list <- lapply(seq_len(th), function(model_cycle) {
-    coord <- m1_ijx
-    x_values <- lapply(seq_len(pre_tun_states), function(state_index) {
-      tp_move <- as.numeric(vapply(
-        .subset2(tp_pre_tun, state_index),
-        FUN.VALUE = numeric(1),
-        FUN = function(x) x[model_cycle]
-      ))
-      tp_stay <- 1 - sum(tp_move, na.rm = TRUE)
-      c(tp_stay, tp_move)
-    })
+  # generate a 3d array with 2nd dimension pre-tunnel state, 3rd dimesnion
+  # destination state (1st is model cycle)
+  dest_names <- c(names(valid_tp), "die")
+  n_dest <- length(dest_names)
+  m1_dest <- sort(unique(m1_ijx[, "j"]))
 
-    # note that this filters out zero probabilities first to avoid wasting
-    # memory and ultimately computational effort doing 0*0 many times
-    coord[, "x"] <- unlist(x_values)
-    coord_nz <- coord[coord[, "x"] != 0, , drop = FALSE]
-    Matrix::sparseMatrix(
-      i = coord_nz[, "i"],
-      j = coord_nz[, "j"],
-      x = coord_nz[, "x"],
-      dims = c(pre_tun_states, matrix_size)
-    )
-  })
+  # make the 3d array for all pre-tunnel states:
+  m1_array <- array(
+    data = 0,
+    dim = c(th, pre_tun_states, n_dest)
+  )
+
+  # populate it by pulling the numbers in:
+  for (pre_tun in seq_len(pre_tun_states)) {
+    tp_move <- .subset2(tp_pre_tun, pre_tun)
+    cycle_mat <- matrix(0, nrow = th, ncol = n_dest)
+    cycle_mat[, match(names(tp_move), dest_names)] <- do.call(cbind, tp_move)
+
+    # p_stay is complement (1 - sum):
+    cycle_mat[, pre_tun] <- 1 - rowSums(cycle_mat)
+    m1_array[, pre_tun, ] <- cycle_mat
+  }
 
   # Now that m1 is populated, let's move on to m2. It is quite simple because we
   # have already validated the transition probability list
@@ -175,7 +173,8 @@ generate_m_list <- function(
   )
 
   list(
-    m1 = m1_list,
+    m1 = m1_array,
+    m1_dest = m1_dest,
     m2 = sm_m2,
     state_names = state_names
   )
