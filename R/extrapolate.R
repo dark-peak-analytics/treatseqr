@@ -18,19 +18,21 @@
 #' @export
 extrapolate_treatseqr <- function(m, spec) {
   # output population matrix:
-  th <- length(m$m1)
+  th <- dim(m$m1)[1]
   pop <- matrix(0, nrow = spec$matrix_size, ncol = th + 1)
   pop[1, 1] <- 1
 
   # get the TPs
   m1 <- m$m1
-  m2 <- m$m2
+  m2t <- Matrix::t(m$m2)
+  pre_pos <- seq_len(spec$pre_tunnels)
+  pre_dest <- m$m1_dest
 
-  # extrapolate the model:
+  # Extrapolate. Scatter-add for m1, matmult for m2
   for (cyc in seq_len(th) + 1) {
-    pop[, cyc] <-
-      as.numeric(pop[seq_len(spec$pre_tunnels), cyc - 1] %*% m1[[cyc - 1]]) +
-      as.numeric(pop[, cyc - 1] %*% m2)
+    pop[, cyc] <- as.numeric(m2t %*% pop[, cyc - 1, drop = FALSE])
+    pop[pre_dest, cyc] <- pop[pre_dest, cyc] +
+      as.numeric(pop[pre_pos, cyc - 1] %*% m1[cyc - 1, , ])
   }
   pop
 }
