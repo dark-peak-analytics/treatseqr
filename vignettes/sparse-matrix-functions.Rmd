@@ -634,7 +634,8 @@ destinations.
 To make this a bit less cumbersome, we can use the function `generate_m_list`
 to do the above using the validated `tp` list for `m1` and `m2` all in one easy
 step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
-`m1` being a list of length time horizon, and `m2` being a single sparse matrix.
+`m1` being a single 3d array, and `m2` being a single sparse matrix, plus a
+couple of extra items to help us along.
 
 ```{r generate_m_list}
 # validate inputs and generate the full matrix m from one function
@@ -643,6 +644,7 @@ m <- generate_m_list(
   transition_prob_list = tp_source,
   first_state_name = "on_1l"
 )
+str(m, 1)
 ```
 
 Note that this function automatically filters out probabilities entered as zero.
