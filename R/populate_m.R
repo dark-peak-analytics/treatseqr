@@ -32,19 +32,24 @@
 #' not supplied, state names and ordering are inferred from
 #' \code{transition_prob_list} itself.
 #'
-#' @return A list with two elements:
-#'   - m1: A 3d array for pre-tunnel states [cycle, pre-tunnel, destination].
+#' @return A list with four elements:
+#'   - m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
+#'     transition probabilities, indexed [cycle, pre-tunnel state, destination].
+#'     Destinations are in canonical order (all states, then death).
+#'   - m1_dest: Integer vector giving the column of the full matrix M that each
+#'     destination slot of m1 corresponds to.
 #'   - m2: A sparse matrix for tunnel states.
+#'   - state_names: Character vector of state names, death last.
 #'
 #' @details
 #' The function validates the transition probability list, splits it into
 #' pre-tunnel and tunnel components, and constructs the corresponding sparse
 #' matrices. It ensures that row sums are appropriate and asserts that the
-#' tunnel matrix rows sum to 1. Note that it filters out zero probabilities
-#' before entering them into the sparse matrices. This avoids those values being
-#' put into the matrix and then used in the matrix multiplications, which would
-#' ultimately always result in values of 0 being propagated. This then has a
-#' computational gain for no cost.
+#' tunnel matrix rows sum to 1. Note that it filters out zero probabilities for
+#' m2 before entering them into the sparse matrix. This avoids those values
+#' being put into the matrix and then used in the matrix multiplications, which
+#' would ultimately always result in values of 0 being propagated. This then has
+#' a computational gain for no cost.
 #'
 #' @importFrom Matrix sparseMatrix rowSums
 #' @importFrom assertthat assert_that
