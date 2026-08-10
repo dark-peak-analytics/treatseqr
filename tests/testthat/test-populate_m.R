@@ -164,3 +164,59 @@ test_that("generate_m_list rejects reordered state_names, places probs positiona
     "'state_names' must match names\\(tp_source\\) in the same order"
   )
 })
+
+# This one guards against misordering of the TPs!
+test_that("m1_dest matches the sorted j coordinates from specify_m", {
+  # 3 pre-tunnel states, 2 tunnels of unequal length.
+  # tunnel_starts: tun1 = col 4, tun2 = col 7; death = col 11
+  th <- 5
+  m_spec <- specify_m(tunnel_lengths = c(3, 4), pre_tunnel_states = 3)
+
+  tp <- list(
+    pre1 = list(
+      pre2 = rep(0.10, th),
+      pre3 = NULL,
+      tun1 = rep(0.05, th),
+      tun2 = rep(0.02, th),
+      die = rep(0.01, th)
+    ),
+    pre2 = list(
+      pre1 = rep(0.03, th), # backwards pre-tunnel
+      pre3 = rep(0.20, th),
+      tun1 = rep(0.06, th),
+      tun2 = rep(0.02, th),
+      die = rep(0.02, th)
+    ),
+    pre3 = list(
+      pre1 = NULL,
+      pre2 = rep(0.04, th), # backwards pre-tunnel
+      tun1 = rep(0.08, th),
+      tun2 = rep(0.03, th),
+      die = rep(0.02, th)
+    ),
+    tun1 = list(tun2 = rep(0.15, 3), die = rep(0.10, 3)),
+    tun2 = list(tun1 = rep(0.05, 4), die = rep(0.20, 4))
+  )
+
+  result <- generate_m_list(m_spec, tp, first_state_name = "pre1")
+
+  expect_equal(dim(result$m1), c(th, 3, 6))
+  expect_equal(result$m1_dest, sort(unique(m_spec$m1_ijx[, "j"])))
+  expect_equal(result$m1_dest, c(1, 2, 3, 4, 7, 11))
+
+  # every (cycle, pre-state) slice is a complete probability distribution
+  expect_true(all(abs(apply(result$m1, c(1, 2), sum) - 1) < 1e-10))
+
+  # specify_m() hoists each state's self-transition to the front of its j
+  # coordinates, so pre3's raw order is (3, 1, 2, 4, 7, 11). The array must be
+  # in canonical order instead: slot 2 is pre2 and slot 3 is pre3's p_stay.
+  # If the hoisted order leaked through, slot 1 would hold p_stay and these
+  # would swap -- and the row would still sum to 1, so only this catches it.
+  expect_equal(result$m1[1, 3, 2], 0.04) # pre3 -> pre2
+  expect_equal(result$m1[1, 3, 3], 0.83) # pre3 p_stay = 1 - 0.17
+  expect_equal(result$m1[1, 2, 1], 0.03) # pre2 -> pre1
+
+  # and it extrapolates to a conserved cohort
+  trace <- extrapolate_treatseqr(result, m_spec)
+  expect_true(all(abs(colSums(trace) - 1) < 1e-10))
+})
