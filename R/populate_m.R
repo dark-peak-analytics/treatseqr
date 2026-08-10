@@ -33,7 +33,7 @@
 #' \code{transition_prob_list} itself.
 #'
 #' @return A list with two elements:
-#'   - m1: A list of sparse matrices (one per cycle) for pre-tunnel states.
+#'   - m1: A 3d array for pre-tunnel states [cycle, pre-tunnel, destination].
 #'   - m2: A sparse matrix for tunnel states.
 #'
 #' @details
