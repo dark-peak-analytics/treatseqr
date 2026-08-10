@@ -17,11 +17,11 @@ test_that("generate_m_list returns correct structure and dimensions", {
   result <- generate_m_list(m_spec, tp_list)
 
   expect_type(result, "list")
-  expect_named(result, c("m1", "m2", "state_names"))
-  expect_true(is.list(result$m1))
+  expect_named(result, c("m1", "m1_dest", "m2", "state_names"))
+  expect_true(is.array(result$m1))
   expect_true(methods::is(result$m2, "sparseMatrix"))
   # m1 length = th = max tunnel length = 2
-  expect_length(result$m1, 2)
+  expect_equal(dim(result$m1), c(2L, 1L, 4L))
   expect_equal(dim(result$m2), c(m_spec$matrix_size, m_spec$matrix_size))
 })
 
@@ -82,7 +82,7 @@ test_that("generate_m_list handles non-zero backwards pre-tunnel transition", {
   result <- generate_m_list(m_spec, tp, first_state_name = "pre1")
 
   # All m1 rows sum to 1 across all model cycles
-  m1_row_sums <- unlist(lapply(result$m1, Matrix::rowSums))
+  m1_row_sums <- apply(result$m1, c(1, 2), sum)
   expect_true(all(abs(m1_row_sums - 1) < 1e-10))
 
   # m2 tunnel + death rows sum to 1
@@ -92,7 +92,7 @@ test_that("generate_m_list handles non-zero backwards pre-tunnel transition", {
   expect_true(all(abs(m2_row_sums - 1) < 1e-10))
 
   # The backwards transition from pre2 (row 2) to pre1 (col 1) is 0.03
-  expect_equal(as.numeric(result$m1[[1]][2, 1]), 0.03)
+  expect_equal(as.numeric(result$m1[1, 2, 1]), 0.03)
 })
 
 test_that("generate_m_list handles non-zero backwards tunnel transition", {
@@ -145,10 +145,13 @@ test_that("generate_m_list rejects reordered state_names, places probs positiona
     first_state_name = "pre",
     state_names = c("pre", "tun1", "tun2", "die")
   )
-  m1_cycle1 <- as.matrix(result$m1[[1]])
-  expect_equal(m1_cycle1[1, 2], 0.11) # pre -> tun1 at tun1's start column
-  expect_equal(m1_cycle1[1, 4], 0.22) # pre -> tun2 at tun2's start column
-  expect_equal(m1_cycle1[1, 6], 0.03) # pre -> die at death column
+  # m1's 3rd dimension is in canonical destination order. m1_dest maps those
+  # slots onto columns of the full matrix M.
+  expect_equal(result$m1_dest, c(1, 2, 4, 6))
+  m1_cycle1 <- result$m1[1, 1, ]
+  expect_equal(m1_cycle1[match(2, result$m1_dest)], 0.11) # pre -> tun1
+  expect_equal(m1_cycle1[match(4, result$m1_dest)], 0.22) # pre -> tun2
+  expect_equal(m1_cycle1[match(6, result$m1_dest)], 0.03) # pre -> die
 
   # Reordered state_names must error, not silently swap the tunnel columns
   expect_error(
