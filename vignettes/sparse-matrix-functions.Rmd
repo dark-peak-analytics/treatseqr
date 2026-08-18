@@ -1,5 +1,5 @@
 ---
-title: "Sparse Matrix Extrapolation using `treatseqr`"
+title: "Sparse Matrix Extrapolation using treatseqr"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Sparse Matrix Extrapolation using treatseqr}
@@ -144,13 +144,14 @@ sequence, and their transition probabilities are based on time from baseline,
 each tunnel, and `d` "resets" if patients loop back into a tunnel they were
 previously resident within).
 
-For `m1`, we will generate a `list` object with length equal to the number of
-model cycles, with one matrix for each cycle. In this sense, `m1` takes a
-familiar approach to time-varying Markov modelling in `R` by simply applying the
-next appropriate matrix to the relevant population. This is no different from
-defining a 3-dimensional array which would look like this: `m1[row, column,
-cycle]`, but the `list` approach is more efficient in `R` because it avoids the
-need to copy the whole array every time we change one value.
+Below, we build `m1` as a `list` object with length equal to the number of model
+cycles, with one matrix for each cycle. This is the familiar approach to
+time-varying Markov modelling in `R`: apply the next appropriate matrix to the
+relevant population each cycle. We start here because it is the most recognisable
+formulation, not because it is what the package uses. The equivalent structure is
+a 3-dimensional array, `m1[cycle, pre-tunnel state, destination]`, and that is
+what `generate_m_list()` actually returns — later in this vignette we build both
+and compare them.
 
 `m2` is larger and a bit more involved. To explore it, let's take a look at the
 top 20 rows:
@@ -302,9 +303,10 @@ print(m_spec$m2_ijx[nrow(m_spec$m2_ijx), ])
 ```
 
 The next step is to populate `m1_ijx` with the data (i.e., `x` values), as well
-as `m2_ijx`. A function `populate_m` is used to organise the transition
-probability data into the right order, and then put that in the `x` column of
-`m1_ijx` and `m2_ijx`.  
+as `m2_ijx`. The function `generate_m_list()` organises the transition
+probability data into the right order and puts it in the `x` column of `m1_ijx`
+and `m2_ijx`. We build this up by hand first, then reach for the function at the
+end of this section.  
 
 ## Validating the transition probability data
 
@@ -633,9 +635,9 @@ destinations.
 
 To make this a bit less cumbersome, we can use the function `generate_m_list`
 to do the above using the validated `tp` list for `m1` and `m2` all in one easy
-step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
-`m1` being a single 3d array, and `m2` being a single sparse matrix, plus a
-couple of extra items to help us along.
+step. The result is a list with 4 elements: `m1` (a single 3d array), `m2` (a
+single sparse matrix), and two extra items to help us along — `m1_dest`, the
+columns of `M` that the 3rd dimension of `m1` maps onto, and `state_names`.
 
 ```{r generate_m_list}
 # validate inputs and generate the full matrix m from one function

@@ -13,14 +13,33 @@
 #'     destination slot of m1 corresponds to.
 #'   - m2: A sparse matrix for tunnel states.
 #'   - state_names: Character vector of state names, death last.
-#' @param spec A model specification list containing:
-#'   - n_cycles: Number of model cycles.
+#' @param spec A model specification list, as returned by \code{specify_m()}.
+#'   Only two of its fields are used here:
 #'   - matrix_size: Size of the transition matrix.
+#'   - pre_tunnels: Number of pre-tunnel states.
 #'
 #' @return A matrix where rows represent states and columns represent time
 #'   points (cycles). The matrix shows the proportion of the cohort in each
 #'   state at each time point.
 #'
+#' @examples
+#' spec <- specify_m(tunnel_lengths = c(3, 3), pre_tunnel_states = 1)
+#'
+#' tp <- list(
+#'   pre  = list(tun1 = rep(0.2, 3), tun2 = rep(0.1, 3), die = rep(0.05, 3)),
+#'   tun1 = list(tun2 = rep(0.3, 3), die = rep(0.1, 3)),
+#'   tun2 = list(die = rep(0.2, 3))
+#' )
+#' state_names <- c("pre", "tun1", "tun2", "die")
+#'
+#' m <- generate_m_list(spec, tp, state_names)
+#' trace <- extrapolate_treatseqr(m, spec)
+#'
+#' # rows are states, columns are time points (cycle 0 first)
+#' dim(trace)
+#'
+#' # the cohort is conserved, so every column sums to 1
+#' colSums(trace)
 #' @export
 extrapolate_treatseqr <- function(m, spec) {
   # output population matrix:

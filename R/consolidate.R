@@ -44,6 +44,41 @@
 #' As with tunnels, entry cohorts are aggregated across wall time, so curves
 #' mix cohorts entering at different model cycles.
 #'
+#' A tunnel column of \code{d} is only a true time-in-state curve while
+#' patients cannot accumulate at a single \code{d}. If the transition
+#' probabilities leave a non-zero \code{p_stay} at a tunnel's final cycle (a
+#' "holding state"), patients pile up in that last position and \code{d} stops
+#' measuring time since entry for them. To keep the interpretation clean, close
+#' a fixed-duration tunnel with a decision-tree node instead: set the final
+#' cycle's destination probabilities to sum to 1 so \code{p_stay} is 0. See the
+#' vignette \code{fixed-duration-tunnels.Rmd} for a worked comparison of the two
+#' designs.
+#'
+#' @examples
+#' spec <- specify_m(tunnel_lengths = c(3, 3), pre_tunnel_states = 1)
+#'
+#' tp <- list(
+#'   pre  = list(tun1 = rep(0.2, 3), tun2 = rep(0.1, 3), die = rep(0.05, 3)),
+#'   tun1 = list(tun2 = rep(0.3, 3), die = rep(0.1, 3)),
+#'   tun2 = list(die = rep(0.2, 3))
+#' )
+#' state_names <- c("pre", "tun1", "tun2", "die")
+#'
+#' m <- generate_m_list(spec, tp, state_names)
+#' trace <- extrapolate_treatseqr(m, spec)
+#'
+#' res <- consolidate_treatseqr_trace(
+#'   full_trace  = trace,
+#'   spec        = spec,
+#'   state_names = c("pre", "tun1", "tun2", "dead"),
+#'   m           = m
+#' )
+#'
+#' # occupancy by model cycle; rows sum to 1
+#' round(res$t, 3)
+#'
+#' # time-in-state curves; every column starts at 1
+#' round(res$d, 3)
 #' @export
 consolidate_treatseqr_trace <- function(
   full_trace,

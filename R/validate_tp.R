@@ -23,7 +23,7 @@
 #'     \item Any `NULL` transition vectors are replaced with numeric vectors of
 #'     zeros of the correct length.
 #'     \item A warning is emitted if a state's own name appears as a destination
-#'     with a non-zero value, since p_stay is normally computed as 1 − sum(other
+#'     with a non-zero value, since p_stay is normally computed as 1 - sum(other
 #'     transitions).
 #'   }
 #'
@@ -46,6 +46,25 @@
 #'
 #' @return The sanitized `tp_source` list where all `NULL` entries have been
 #'   replaced with vectors of zeros of the correct length.
+#' @examples
+#' # 1 pre-tunnel state (pre) and 2 tunnels of 3 cycles each
+#' tp <- list(
+#'   pre  = list(tun1 = rep(0.2, 3), tun2 = rep(0.1, 3), die = rep(0.05, 3)),
+#'   tun1 = list(tun2 = rep(0.3, 3), die = rep(0.1, 3)),
+#'   tun2 = list(die = rep(0.2, 3))
+#' )
+#' state_names <- c("pre", "tun1", "tun2", "die")
+#'
+#' valid_tp <- validate_tp_source(
+#'   tp_source      = tp,
+#'   tunnel_lengths = c(3, 3),
+#'   state_names    = state_names
+#' )
+#'
+#' # every state is expanded to the full destination set, so the backwards
+#' # slot tun1 -> pre is added as a zero vector
+#' names(valid_tp$tun1)
+#' valid_tp$tun1$pre
 #' @importFrom utils tail
 #' @importFrom stats setNames
 #' @export

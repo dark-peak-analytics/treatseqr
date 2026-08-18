@@ -58,4 +58,29 @@ m2 before entering them into the sparse matrix. This avoids those values
 being put into the matrix and then used in the matrix multiplications, which
 would ultimately always result in values of 0 being propagated. This then has
 a computational gain for no cost.
+
+The time horizon is taken as the longest transition probability vector
+supplied for the first state, and must be at least 2 cycles. A single-cycle
+horizon is rejected, as it leaves no transition for the engine to apply.
+}
+\examples{
+spec <- specify_m(tunnel_lengths = c(3, 3), pre_tunnel_states = 1)
+
+tp <- list(
+  pre  = list(tun1 = rep(0.2, 3), tun2 = rep(0.1, 3), die = rep(0.05, 3)),
+  tun1 = list(tun2 = rep(0.3, 3), die = rep(0.1, 3)),
+  tun2 = list(die = rep(0.2, 3))
+)
+state_names <- c("pre", "tun1", "tun2", "die")
+
+m <- generate_m_list(spec, tp, state_names)
+
+# m1 is [cycle, pre-tunnel state, destination]
+dim(m$m1)
+
+# and m1_dest says which columns of M those destinations are
+m$m1_dest
+
+# every tunnel row of m2 sums to 1 (row 1 is the empty pre-tunnel row)
+Matrix::rowSums(m$m2)[-1]
 }
