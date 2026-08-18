@@ -1,5 +1,5 @@
-#' Functions to consolidate `trace` after it is calculated using
-#' `extrapolate_treatseqr`
+# Functions to consolidate `trace` after it is calculated using
+# `extrapolate_treatseqr`
 
 #' Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks
 #'

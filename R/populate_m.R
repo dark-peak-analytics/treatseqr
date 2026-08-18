@@ -1,9 +1,9 @@
-#' These functions are dedicated to using the validated version of the
-#' transition probabilities which the functions in `validate_tp.R` produce to
-#' generate the sparce matrices required to extrapolate the sequencing model
-#'
-#' See the vignette `sparse-matrix-functions.Rmd` for more details on how these
-#' work.
+# These functions are dedicated to using the validated version of the
+# transition probabilities which the functions in `validate_tp.R` produce to
+# generate the sparce matrices required to extrapolate the sequencing model
+#
+# See the vignette `sparse-matrix-functions.Rmd` for more details on how these
+# work.
 
 #' Generate Markov Transition Matrices (m1 and m2) Based on Model Specification
 #'
@@ -24,11 +24,15 @@
 #' state.
 #' @param state_names A character vector used to validate
 #' \code{transition_prob_list}. It must equal \code{names(transition_prob_list)}
-#' in the correct order.
+#' in the same order, with the absorbing (death) state appended as the last
+#' element. It cannot be used to reorder states: the matrix layout produced by
+#' \code{specify_m()} is positional, so a vector in any other order is an
+#' error rather than a request to permute the columns of M.
 #'
 #' @return A list with four elements:
 #'   - m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
-#'     transition probabilities, indexed [cycle, pre-tunnel state, destination].
+#'     transition probabilities, indexed
+#'     `[cycle, pre-tunnel state, destination]`.
 #'     Destinations are in canonical order (all states, then death).
 #'   - m1_dest: Integer vector giving the column of the full matrix M that each
 #'     destination slot of m1 corresponds to.

@@ -6,7 +6,8 @@
 #'
 #' @param m A list containing the transition matrices:
 #'   - m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
-#'     transition probabilities, indexed [cycle, pre-tunnel state, destination].
+#'     transition probabilities, indexed
+#'     `[cycle, pre-tunnel state, destination]`.
 #'     Destinations are in canonical order (all states, then death).
 #'   - m1_dest: Integer vector giving the column of the full matrix M that each
 #'     destination slot of m1 corresponds to.

@@ -2,9 +2,7 @@
 % Please edit documentation in R/consolidate.R
 \name{consolidate_treatseqr_trace}
 \alias{consolidate_treatseqr_trace}
-\title{Functions to consolidate \code{trace} after it is calculated using
-\code{extrapolate_treatseqr}
-Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks}
+\title{Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks}
 \usage{
 consolidate_treatseqr_trace(full_trace, spec, state_names, m = NULL)
 }

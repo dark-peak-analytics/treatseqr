@@ -2,16 +2,9 @@
 % Please edit documentation in R/populate_m.R
 \name{generate_m_list}
 \alias{generate_m_list}
-\title{These functions are dedicated to using the validated version of the
-transition probabilities which the functions in \code{validate_tp.R} produce to
-generate the sparce matrices required to extrapolate the sequencing model}
+\title{Generate Markov Transition Matrices (m1 and m2) Based on Model Specification}
 \usage{
-generate_m_list(
-  m_specification,
-  transition_prob_list,
-  first_state_name = "initial",
-  state_names = NULL
-)
+generate_m_list(m_specification, transition_prob_list, state_names)
 }
 \arguments{
 \item{m_specification}{A list containing model parameters, as returned by
@@ -27,22 +20,19 @@ generate_m_list(
 \item{transition_prob_list}{A list of transition probabilities for each
 state.}
 
-\item{first_state_name}{A character string naming the initial (pre-tunnel)
-state. Defaults to \code{"initial"}.}
-
-\item{state_names}{An optional character vector used to validate
-\code{transition_prob_list}. It must equal
-\code{names(transition_prob_list)} in the same order, with the absorbing
-(death) state appended as the last element. It cannot be used to reorder
-states: the matrix layout produced by \code{specify_m()} is positional. If
-not supplied, state names and ordering are inferred from
-\code{transition_prob_list} itself.}
+\item{state_names}{A character vector used to validate
+\code{transition_prob_list}. It must equal \code{names(transition_prob_list)}
+in the same order, with the absorbing (death) state appended as the last
+element. It cannot be used to reorder states: the matrix layout produced by
+\code{specify_m()} is positional, so a vector in any other order is an
+error rather than a request to permute the columns of M.}
 }
 \value{
 A list with four elements:
 \itemize{
 \item m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
-transition probabilities, indexed \link{cycle, pre-tunnel state, destination}.
+transition probabilities, indexed
+\verb{[cycle, pre-tunnel state, destination]}.
 Destinations are in canonical order (all states, then death).
 \item m1_dest: Integer vector giving the column of the full matrix M that each
 destination slot of m1 corresponds to.
@@ -51,11 +41,6 @@ destination slot of m1 corresponds to.
 }
 }
 \description{
-See the vignette \code{sparse-matrix-functions.Rmd} for more details on how these
-work.
-Generate Markov Transition Matrices (m1 and m2) Based on Model Specification
-}
-\details{
 This function generates two transition matrices (m1 and m2) for a Markov
 model, using the provided model specification and a validated list of
 transition probabilities.
@@ -63,7 +48,8 @@ transition probabilities.
 \item m1 corresponds to pre-tunnel states for each model cycle.
 \item m2 corresponds to tunnel states after entering the sequence.
 }
-
+}
+\details{
 The function validates the transition probability list, splits it into
 pre-tunnel and tunnel components, and constructs the corresponding sparse
 matrices. It ensures that row sums are appropriate and asserts that the

@@ -10,7 +10,8 @@ extrapolate_treatseqr(m, spec)
 \item{m}{A list containing the transition matrices:
 \itemize{
 \item m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
-transition probabilities, indexed \link{cycle, pre-tunnel state, destination}.
+transition probabilities, indexed
+\verb{[cycle, pre-tunnel state, destination]}.
 Destinations are in canonical order (all states, then death).
 \item m1_dest: Integer vector giving the column of the full matrix M that each
 destination slot of m1 corresponds to.
