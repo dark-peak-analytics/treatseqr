@@ -30,8 +30,7 @@ test_that("cohort is conserved at all time points — 1 tunnel", {
       die = rep(0.15, 10)
     )
   )
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("alive", "tun1", "die"))
   pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
@@ -50,8 +49,7 @@ test_that("cohort is conserved at all time points — 2 tunnels", {
     s2 = list(s3 = rep(0.20, 8), die = rep(0.10, 8)),
     s3 = list(die = rep(0.25, 8))
   )
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "s3", "die"))
   pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
@@ -73,8 +71,7 @@ test_that("cohort is conserved — short horizon, high p_stay stresses last tunn
     s2 = list(s3 = rep(0.30, 4), die = rep(0.01, 4)),
     s3 = list(die = rep(0.01, 4))
   )
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "s3", "die"))
   pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
@@ -89,8 +86,7 @@ test_that("cohort is conserved — short horizon, high p_stay stresses last tunn
 test_that("cohort is conserved — 3 tunnels", {
   spec <- specify_m(tunnel_lengths = rep(6, 3), pre_tunnel_states = 1)
   tp <- make_tp_list(spec, p_move = 0.08, p_die = 0.04)
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c(names(tp), "die"))
   pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
@@ -140,8 +136,7 @@ test_that("last state of last tunnel self-loops in m2", {
     s2 = list(s3 = rep(0.2, 3), die = rep(0.10, 3)),
     s3 = list(die = rep(0.20, 3))
   )
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "s3", "die"))
 
   # The self-loop diagonal element must be non-zero (p_stay = 1 - 0.20 = 0.80)
   expect_gt(m$m2[last_tun_state, last_tun_state], 0)
@@ -161,8 +156,7 @@ test_that("last tunnel state population persists when forced p_stay is high", {
     alive = list(tun1 = rep(0.90, 3), die = rep(0.005, 3)),
     tun1 = list(die = rep(0.005, 3))
   )
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("alive", "tun1", "die"))
   pop <- extrapolate_treatseqr(m, spec)
 
   # last tunnel state = pre_tunnels + tunnel_lengths[1] = 1 + 3 = 4 (not dead)
@@ -207,8 +201,11 @@ test_that("extrapolate works with pre_tunnel_states = 2", {
     )
   )
 
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(
+    spec,
+    tp,
+    c("state1", "state2", "tun1", "tun2", "die")
+  )
   pop <- extrapolate_treatseqr(m, spec)
 
   # dimensions: nrow = matrix_size, ncol = th + 1 (th = tunnel_lengths[1] = 5)
@@ -236,8 +233,7 @@ test_that("cohort is conserved with pre_tunnel_states = 2, short horizon", {
     t1 = list(t2 = rep(0.25, 4), die = rep(0.02, 4)),
     t2 = list(die = rep(0.02, 4))
   )
-  # TODO: Needs state_names
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "t1", "t2", "die"))
   pop <- extrapolate_treatseqr(m, spec)
   expect_true(all(abs(colSums(pop) - 1) < 1e-10))
 })
