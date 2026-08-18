@@ -105,6 +105,12 @@ generate_m_list <- function(
   # time horizon must be the length of the pre-tunnels. At least 1 pre-tunnel:
   th <- max(unlist(lapply(transition_prob_list[[1]], length)))
 
+  # time horizon must be at least 2
+  assertthat::assert_that(
+    th >= 2,
+    msg = sprintf("Time horizon (%d) must be at least 2 cycles", th)
+  )
+
   # Other important inputs
   pre_tun_states <- m_specification$pre_tunnels
   n_states <- length(valid_tp)
