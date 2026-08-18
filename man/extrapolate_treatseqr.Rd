@@ -19,10 +19,11 @@ destination slot of m1 corresponds to.
 \item state_names: Character vector of state names, death last.
 }}
 
-\item{spec}{A model specification list containing:
+\item{spec}{A model specification list, as returned by \code{specify_m()}.
+Only two of its fields are used here:
 \itemize{
-\item n_cycles: Number of model cycles.
 \item matrix_size: Size of the transition matrix.
+\item pre_tunnels: Number of pre-tunnel states.
 }}
 }
 \value{

@@ -58,4 +58,8 @@ m2 before entering them into the sparse matrix. This avoids those values
 being put into the matrix and then used in the matrix multiplications, which
 would ultimately always result in values of 0 being propagated. This then has
 a computational gain for no cost.
+
+The time horizon is taken as the longest transition probability vector
+supplied for the first state, and must be at least 2 cycles. A single-cycle
+horizon is rejected, as it leaves no transition for the engine to apply.
 }

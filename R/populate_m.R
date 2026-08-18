@@ -49,6 +49,10 @@
 #' would ultimately always result in values of 0 being propagated. This then has
 #' a computational gain for no cost.
 #'
+#' The time horizon is taken as the longest transition probability vector
+#' supplied for the first state, and must be at least 2 cycles. A single-cycle
+#' horizon is rejected, as it leaves no transition for the engine to apply.
+#'
 #' @importFrom Matrix sparseMatrix rowSums
 #' @importFrom assertthat assert_that
 #' @export

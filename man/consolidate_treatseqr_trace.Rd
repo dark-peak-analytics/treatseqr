@@ -58,4 +58,14 @@ curves (requires \code{m}), and the dead column is overall survival. Every
 column of \code{d} therefore starts at 1 (or 0 for states never entered).
 As with tunnels, entry cohorts are aggregated across wall time, so curves
 mix cohorts entering at different model cycles.
+
+A tunnel column of \code{d} is only a true time-in-state curve while
+patients cannot accumulate at a single \code{d}. If the transition
+probabilities leave a non-zero \code{p_stay} at a tunnel's final cycle (a
+"holding state"), patients pile up in that last position and \code{d} stops
+measuring time since entry for them. To keep the interpretation clean, close
+a fixed-duration tunnel with a decision-tree node instead: set the final
+cycle's destination probabilities to sum to 1 so \code{p_stay} is 0. See the
+vignette \code{fixed-duration-tunnels.Rmd} for a worked comparison of the two
+designs.
 }

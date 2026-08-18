@@ -13,9 +13,10 @@
 #'     destination slot of m1 corresponds to.
 #'   - m2: A sparse matrix for tunnel states.
 #'   - state_names: Character vector of state names, death last.
-#' @param spec A model specification list containing:
-#'   - n_cycles: Number of model cycles.
+#' @param spec A model specification list, as returned by \code{specify_m()}.
+#'   Only two of its fields are used here:
 #'   - matrix_size: Size of the transition matrix.
+#'   - pre_tunnels: Number of pre-tunnel states.
 #'
 #' @return A matrix where rows represent states and columns represent time
 #'   points (cycles). The matrix shows the proportion of the cohort in each
