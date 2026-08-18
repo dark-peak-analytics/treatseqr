@@ -55,7 +55,7 @@ last. Otherwise the canonical set and order are inferred from tp_source.
 \item Any \code{NULL} transition vectors are replaced with numeric vectors of
 zeros of the correct length.
 \item A warning is emitted if a state's own name appears as a destination
-with a non-zero value, since p_stay is normally computed as 1 − sum(other
+with a non-zero value, since p_stay is normally computed as 1 - sum(other
 transitions).
 }
 }
