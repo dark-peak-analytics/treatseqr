@@ -642,7 +642,7 @@ couple of extra items to help us along.
 m <- generate_m_list(
   m_specification = m_spec,
   transition_prob_list = tp_source,
-  first_state_name = "on_1l"
+  state_names = c("on_1l", "off_1l", "on_2l", "off_2l", "bsc", "die")
 )
 str(m, 1)
 ```

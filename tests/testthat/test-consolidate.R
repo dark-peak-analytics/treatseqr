@@ -16,6 +16,7 @@ test_that("consolidate_treatseqr_trace returns correct structure", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
 
@@ -53,6 +54,7 @@ test_that("consolidate_treatseqr_trace has correct dimensions", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("s1", "s2", "s3", "s4", "dead")
@@ -83,6 +85,7 @@ test_that("consolidate_treatseqr_trace column names are correct", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("healthy", "sick", "dead")
@@ -111,6 +114,7 @@ test_that("consolidate_treatseqr_trace t matrix rows sum to 1", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("on_tx", "off_tx", "prog", "dead")
@@ -139,6 +143,7 @@ test_that("consolidate_treatseqr_trace d matrix excludes time 0", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("s1", "s2", "s3", "dead")
@@ -177,6 +182,7 @@ test_that("consolidate_treatseqr_trace handles different numbers of tunnels", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("s1", "s2", "s3", "s4", "dead")
@@ -204,6 +210,7 @@ test_that("consolidate_treatseqr_trace dead state accumulates over time", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("alive", "tun1", "dead")
@@ -229,6 +236,7 @@ test_that("consolidate_treatseqr_trace d matrix dead column is survival", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("alive", "tun1", "dead")
@@ -256,6 +264,7 @@ test_that("consolidate_treatseqr_trace initial state starts at 1", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("s1", "s2", "dead")
@@ -305,17 +314,22 @@ test_that("consolidate_treatseqr_trace works with multiple pre-tunnel states", {
 
   tp_list <- list(
     pre1 = list(
-      pre2 = rep(0.10, 2), tun1 = rep(0.10, 2),
-      tun2 = rep(0.05, 2), die = rep(0.01, 2)
+      pre2 = rep(0.10, 2),
+      tun1 = rep(0.10, 2),
+      tun2 = rep(0.05, 2),
+      die = rep(0.01, 2)
     ),
     pre2 = list(
-      pre1 = rep(0.02, 2), tun1 = rep(0.10, 2),
-      tun2 = rep(0.05, 2), die = rep(0.01, 2)
+      pre1 = rep(0.02, 2),
+      tun1 = rep(0.10, 2),
+      tun2 = rep(0.05, 2),
+      die = rep(0.01, 2)
     ),
     tun1 = list(tun2 = rep(0.10, 2), die = rep(0.10, 2)),
     tun2 = list(die = rep(0.20, 2))
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(
     m_specification = m_spec,
     transition_prob_list = tp_list,
@@ -363,8 +377,10 @@ test_that("consolidate_treatseqr_trace works with multiple pre-tunnel states", {
   )
   expect_equal(unname(fallback$d[, "pre2"]), unname(result$t[1:th, "pre2"]))
   # tunnel and dead columns are unaffected by the fallback
-  expect_equal(fallback$d[, c("tun1", "tun2", "die")],
-               result$d[, c("tun1", "tun2", "die")])
+  expect_equal(
+    fallback$d[, c("tun1", "tun2", "die")],
+    result$d[, c("tun1", "tun2", "die")]
+  )
 })
 
 # with a single pre-tunnel state there is no re-entry, so the sojourn curve
@@ -387,6 +403,7 @@ test_that("supplying m reproduces legacy d for a single pre-tunnel state", {
     )
   )
 
+  # TODO: Needs state_names
   m <- generate_m_list(m_spec, tp_list)
   full_trace <- extrapolate_treatseqr(m, m_spec)
   state_names <- c("state1", "state2", "state3", "dead")
@@ -420,6 +437,7 @@ testthat::test_that("tunnel length of 1 still works with consolidate_treatseqr_t
 
   # expect a message indicating that patients will transition out of the tunnel
   # after 1 cycle
+  # TODO: Needs state_names
   testthat::expect_message(
     generate_m_list(
       m_specification = m_spec,
@@ -430,6 +448,7 @@ testthat::test_that("tunnel length of 1 still works with consolidate_treatseqr_t
   )
 
   # compile
+  # TODO: Needs state_names
   m <- suppressMessages(generate_m_list(
     m_specification = m_spec,
     transition_prob_list = tp_list,

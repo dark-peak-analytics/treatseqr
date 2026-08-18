@@ -14,6 +14,7 @@ test_that("generate_m_list returns correct structure and dimensions", {
   # generate_m_list expects a validated structure, so names must match m_spec
   names(tp_list) <- c("state1", "state2", "state3")
 
+  # TODO: Needs state_names
   result <- generate_m_list(m_spec, tp_list)
 
   expect_type(result, "list")
@@ -38,6 +39,7 @@ test_that("generate_m_list throws error for invalid transition probabilities", {
     state3 = list(die = rep(0.5, 2))
   )
   names(tp_list) <- c("state1", "state2", "state3")
+  # TODO: Needs state_names
   expect_error(generate_m_list(m_spec, tp_list), "Probabilities for state")
 })
 
@@ -48,6 +50,7 @@ test_that("generate_m_list m2 rows sum to 1", {
     s2 = list(die = rep(0.3, 3))
   )
   names(tp_list) <- c("s1", "s2")
+  # TODO: Needs state_names
   result <- generate_m_list(m_spec, tp_list)
   m2 <- result$m2
   # All rows except the first should sum to 1
@@ -79,6 +82,7 @@ test_that("generate_m_list handles non-zero backwards pre-tunnel transition", {
     tun2 = list(die = rep(0.20, th))
   )
 
+  # TODO: Needs state_names
   result <- generate_m_list(m_spec, tp, first_state_name = "pre1")
 
   # All m1 rows sum to 1 across all model cycles
@@ -111,6 +115,7 @@ test_that("generate_m_list handles non-zero backwards tunnel transition", {
     )
   )
 
+  # TODO: Needs state_names
   result <- generate_m_list(m_spec, tp, first_state_name = "pre")
 
   # m2 tunnel + death rows sum to 1
@@ -198,6 +203,7 @@ test_that("m1_dest matches the sorted j coordinates from specify_m", {
     tun2 = list(tun1 = rep(0.05, 4), die = rep(0.20, 4))
   )
 
+  # TODO: Needs state_names
   result <- generate_m_list(m_spec, tp, first_state_name = "pre1")
 
   expect_equal(dim(result$m1), c(th, 3, 6))

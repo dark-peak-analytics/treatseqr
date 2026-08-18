@@ -22,15 +22,9 @@
 #'   - m2_ijx: Coordinate matrix for m2.
 #' @param transition_prob_list A list of transition probabilities for each
 #' state.
-#' @param first_state_name A character string naming the initial (pre-tunnel)
-#' state. Defaults to `"initial"`.
-#' @param state_names An optional character vector used to validate
-#' \code{transition_prob_list}. It must equal
-#' \code{names(transition_prob_list)} in the same order, with the absorbing
-#' (death) state appended as the last element. It cannot be used to reorder
-#' states: the matrix layout produced by \code{specify_m()} is positional. If
-#' not supplied, state names and ordering are inferred from
-#' \code{transition_prob_list} itself.
+#' @param state_names A character vector used to validate
+#' \code{transition_prob_list}. It must equal \code{names(transition_prob_list)}
+#' in the correct order.
 #'
 #' @return A list with four elements:
 #'   - m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
@@ -58,8 +52,7 @@
 generate_m_list <- function(
   m_specification,
   transition_prob_list,
-  first_state_name = "initial",
-  state_names = NULL
+  state_names
 ) {
   # validate the transition probability source list.
   # This will return a valid list or an error.
@@ -68,12 +61,41 @@ generate_m_list <- function(
     tunnel_lengths = m_specification$tunnel_lengths,
     state_names = state_names
   )
-  # cover off if the user wants the state_names derivation to be automatic
-  if (is.null(state_names)) {
-    state_names <- rapply(valid_tp, function(x) 1, how = "list")[[1]] |>
-      unlist() |>
-      names()
-    state_names <- c(first_state_name, state_names)
+
+  # go through valid_tp making sure all of state_names except self are inside
+  # each element:
+  for (o_state in state_names[-length(state_names)]) {
+    missing_states <- unique(
+      state_names[
+        state_names != o_state & !state_names %in% names(valid_tp[[o_state]])
+      ]
+    )
+    assertthat::assert_that(
+      length(missing_states) == 0,
+      msg = sprintf(
+        paste0(
+          "State(s) %s are not present in the validated",
+          " transition probability list for '%s'"
+        ),
+        paste(shQuote(missing_states), collapse = ", "),
+        o_state
+      )
+    )
+
+    # check ordering (excluding the origin state itself)
+    expected_order <- state_names[state_names != o_state]
+    actual_order <- names(valid_tp[[o_state]])
+    # ensure origin is removed from the actual order if present
+    actual_order <- actual_order[actual_order != o_state]
+    if (!identical(expected_order, actual_order)) {
+      msg <- sprintf(
+        "Ordering mismatch for '%s'. Expected (excluding origin): %s; got: %s",
+        o_state,
+        paste(shQuote(expected_order), collapse = ", "),
+        paste(shQuote(actual_order), collapse = ", ")
+      )
+      assertthat::assert_that(FALSE, msg = msg)
+    }
   }
 
   # time horizon must be the length of the pre-tunnels. At least 1 pre-tunnel:
@@ -98,7 +120,7 @@ generate_m_list <- function(
 
   # generate a 3d array with 2nd dimension pre-tunnel state, 3rd dimesnion
   # destination state (1st is model cycle)
-  dest_names <- c(names(valid_tp), "die")
+  dest_names <- c(names(valid_tp), tail(state_names, 1))
   n_dest <- length(dest_names)
   m1_dest <- sort(unique(m1_ijx[, "j"]))
 
