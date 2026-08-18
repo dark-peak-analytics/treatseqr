@@ -1,8 +1,8 @@
 ---
-title: "Sparse Matrix Extrapolation"
+title: "Sparse Matrix Extrapolation from First Principles"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Sparse Matrix Extrapolation}
+  %\VignetteIndexEntry{Sparse Matrix Extrapolation from First Principles}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---

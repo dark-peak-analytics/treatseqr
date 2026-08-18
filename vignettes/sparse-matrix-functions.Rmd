@@ -1,5 +1,5 @@
 ---
-title: "Sparse Matrix Extrapolation using `treatseqr`"
+title: "Sparse Matrix Extrapolation using treatseqr"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Sparse Matrix Extrapolation using treatseqr}
