@@ -259,7 +259,9 @@ As with the other vignettes, use the function to generate our matrix list:
 m <- generate_m_list(
   m_specification      = m_spec,
   transition_prob_list = valid_tp,
-  first_state_name     = "newly_dx"
+  state_names          = c(
+    "newly_dx", "stage_1", "stage_2", "stage_3", "stage_4", "die"
+  )
 )
 ```
 

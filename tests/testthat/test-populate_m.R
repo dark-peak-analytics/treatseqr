@@ -14,14 +14,18 @@ test_that("generate_m_list returns correct structure and dimensions", {
   # generate_m_list expects a validated structure, so names must match m_spec
   names(tp_list) <- c("state1", "state2", "state3")
 
-  result <- generate_m_list(m_spec, tp_list)
+  result <- generate_m_list(
+    m_spec,
+    tp_list,
+    c("state1", "state2", "state3", "die")
+  )
 
   expect_type(result, "list")
-  expect_named(result, c("m1", "m2", "state_names"))
-  expect_true(is.list(result$m1))
+  expect_named(result, c("m1", "m1_dest", "m2", "state_names"))
+  expect_true(is.array(result$m1))
   expect_true(methods::is(result$m2, "sparseMatrix"))
   # m1 length = th = max tunnel length = 2
-  expect_length(result$m1, 2)
+  expect_equal(dim(result$m1), c(2L, 1L, 4L))
   expect_equal(dim(result$m2), c(m_spec$matrix_size, m_spec$matrix_size))
 })
 
@@ -38,7 +42,10 @@ test_that("generate_m_list throws error for invalid transition probabilities", {
     state3 = list(die = rep(0.5, 2))
   )
   names(tp_list) <- c("state1", "state2", "state3")
-  expect_error(generate_m_list(m_spec, tp_list), "Probabilities for state")
+  expect_error(
+    generate_m_list(m_spec, tp_list, c("state1", "state2", "state3", "die")),
+    "Probabilities for state"
+  )
 })
 
 test_that("generate_m_list m2 rows sum to 1", {
@@ -48,7 +55,7 @@ test_that("generate_m_list m2 rows sum to 1", {
     s2 = list(die = rep(0.3, 3))
   )
   names(tp_list) <- c("s1", "s2")
-  result <- generate_m_list(m_spec, tp_list)
+  result <- generate_m_list(m_spec, tp_list, c("s1", "s2", "die"))
   m2 <- result$m2
   # All rows except the first should sum to 1
   row_sums <- Matrix::rowSums(m2[2:nrow(m2), ])
@@ -79,10 +86,14 @@ test_that("generate_m_list handles non-zero backwards pre-tunnel transition", {
     tun2 = list(die = rep(0.20, th))
   )
 
-  result <- generate_m_list(m_spec, tp, first_state_name = "pre1")
+  result <- generate_m_list(
+    m_spec,
+    tp,
+    c("pre1", "pre2", "tun1", "tun2", "die")
+  )
 
   # All m1 rows sum to 1 across all model cycles
-  m1_row_sums <- unlist(lapply(result$m1, Matrix::rowSums))
+  m1_row_sums <- apply(result$m1, c(1, 2), sum)
   expect_true(all(abs(m1_row_sums - 1) < 1e-10))
 
   # m2 tunnel + death rows sum to 1
@@ -92,7 +103,7 @@ test_that("generate_m_list handles non-zero backwards pre-tunnel transition", {
   expect_true(all(abs(m2_row_sums - 1) < 1e-10))
 
   # The backwards transition from pre2 (row 2) to pre1 (col 1) is 0.03
-  expect_equal(as.numeric(result$m1[[1]][2, 1]), 0.03)
+  expect_equal(as.numeric(result$m1[1, 2, 1]), 0.03)
 })
 
 test_that("generate_m_list handles non-zero backwards tunnel transition", {
@@ -111,7 +122,7 @@ test_that("generate_m_list handles non-zero backwards tunnel transition", {
     )
   )
 
-  result <- generate_m_list(m_spec, tp, first_state_name = "pre")
+  result <- generate_m_list(m_spec, tp, c("pre", "tun1", "tun2", "die"))
 
   # m2 tunnel + death rows sum to 1
   m2_row_sums <- Matrix::rowSums(result$m2[
@@ -142,22 +153,83 @@ test_that("generate_m_list rejects reordered state_names, places probs positiona
   result <- generate_m_list(
     m_spec,
     tp,
-    first_state_name = "pre",
     state_names = c("pre", "tun1", "tun2", "die")
   )
-  m1_cycle1 <- as.matrix(result$m1[[1]])
-  expect_equal(m1_cycle1[1, 2], 0.11) # pre -> tun1 at tun1's start column
-  expect_equal(m1_cycle1[1, 4], 0.22) # pre -> tun2 at tun2's start column
-  expect_equal(m1_cycle1[1, 6], 0.03) # pre -> die at death column
+  # m1's 3rd dimension is in canonical destination order. m1_dest maps those
+  # slots onto columns of the full matrix M.
+  expect_equal(result$m1_dest, c(1, 2, 4, 6))
+  m1_cycle1 <- result$m1[1, 1, ]
+  expect_equal(m1_cycle1[match(2, result$m1_dest)], 0.11) # pre -> tun1
+  expect_equal(m1_cycle1[match(4, result$m1_dest)], 0.22) # pre -> tun2
+  expect_equal(m1_cycle1[match(6, result$m1_dest)], 0.03) # pre -> die
 
   # Reordered state_names must error, not silently swap the tunnel columns
   expect_error(
     generate_m_list(
       m_spec,
       tp,
-      first_state_name = "pre",
       state_names = c("pre", "tun2", "tun1", "die")
     ),
     "'state_names' must match names\\(tp_source\\) in the same order"
   )
+})
+
+# This one guards against misordering of the TPs!
+test_that("m1_dest matches the sorted j coordinates from specify_m", {
+  # 3 pre-tunnel states, 2 tunnels of unequal length.
+  # tunnel_starts: tun1 = col 4, tun2 = col 7; death = col 11
+  th <- 5
+  m_spec <- specify_m(tunnel_lengths = c(3, 4), pre_tunnel_states = 3)
+
+  tp <- list(
+    pre1 = list(
+      pre2 = rep(0.10, th),
+      pre3 = NULL,
+      tun1 = rep(0.05, th),
+      tun2 = rep(0.02, th),
+      die = rep(0.01, th)
+    ),
+    pre2 = list(
+      pre1 = rep(0.03, th), # backwards pre-tunnel
+      pre3 = rep(0.20, th),
+      tun1 = rep(0.06, th),
+      tun2 = rep(0.02, th),
+      die = rep(0.02, th)
+    ),
+    pre3 = list(
+      pre1 = NULL,
+      pre2 = rep(0.04, th), # backwards pre-tunnel
+      tun1 = rep(0.08, th),
+      tun2 = rep(0.03, th),
+      die = rep(0.02, th)
+    ),
+    tun1 = list(tun2 = rep(0.15, 3), die = rep(0.10, 3)),
+    tun2 = list(tun1 = rep(0.05, 4), die = rep(0.20, 4))
+  )
+
+  result <- generate_m_list(
+    m_spec,
+    tp,
+    c("pre1", "pre2", "pre3", "tun1", "tun2", "die")
+  )
+
+  expect_equal(dim(result$m1), c(th, 3, 6))
+  expect_equal(result$m1_dest, sort(unique(m_spec$m1_ijx[, "j"])))
+  expect_equal(result$m1_dest, c(1, 2, 3, 4, 7, 11))
+
+  # every (cycle, pre-state) slice is a complete probability distribution
+  expect_true(all(abs(apply(result$m1, c(1, 2), sum) - 1) < 1e-10))
+
+  # specify_m() hoists each state's self-transition to the front of its j
+  # coordinates, so pre3's raw order is (3, 1, 2, 4, 7, 11). The array must be
+  # in canonical order instead: slot 2 is pre2 and slot 3 is pre3's p_stay.
+  # If the hoisted order leaked through, slot 1 would hold p_stay and these
+  # would swap -- and the row would still sum to 1, so only this catches it.
+  expect_equal(result$m1[1, 3, 2], 0.04) # pre3 -> pre2
+  expect_equal(result$m1[1, 3, 3], 0.83) # pre3 p_stay = 1 - 0.17
+  expect_equal(result$m1[1, 2, 1], 0.03) # pre2 -> pre1
+
+  # and it extrapolates to a conserved cohort
+  trace <- extrapolate_treatseqr(result, m_spec)
+  expect_true(all(abs(colSums(trace) - 1) < 1e-10))
 })

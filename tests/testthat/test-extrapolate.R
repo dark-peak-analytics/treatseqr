@@ -11,7 +11,8 @@ make_tp_list <- function(spec, p_move = 0.1, p_die = 0.05) {
     out <- c(out, list(rep(p_die, th)))
     names(out) <- c(destinations, "die")
     out
-  }) |> setNames(nms)
+  }) |>
+    setNames(nms)
 }
 
 # ------------------------------------------------------------
@@ -23,18 +24,21 @@ test_that("cohort is conserved at all time points — 1 tunnel", {
   tp <- list(
     alive = list(
       tun1 = rep(0.05, 10),
-      die  = rep(0.10, 10)
+      die = rep(0.10, 10)
     ),
     tun1 = list(
       die = rep(0.15, 10)
     )
   )
-  m    <- generate_m_list(spec, tp)
-  pop  <- extrapolate_treatseqr(m, spec)
+  m <- generate_m_list(spec, tp, c("alive", "tun1", "die"))
+  pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
     all(abs(sums - 1) < 1e-10),
-    label = paste("colSums deviate from 1:", paste(round(sums, 12), collapse = ", "))
+    label = paste(
+      "colSums deviate from 1:",
+      paste(round(sums, 12), collapse = ", ")
+    )
   )
 })
 
@@ -45,12 +49,15 @@ test_that("cohort is conserved at all time points — 2 tunnels", {
     s2 = list(s3 = rep(0.20, 8), die = rep(0.10, 8)),
     s3 = list(die = rep(0.25, 8))
   )
-  m    <- generate_m_list(spec, tp)
-  pop  <- extrapolate_treatseqr(m, spec)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "s3", "die"))
+  pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
     all(abs(sums - 1) < 1e-10),
-    label = paste("colSums deviate from 1:", paste(round(sums, 12), collapse = ", "))
+    label = paste(
+      "colSums deviate from 1:",
+      paste(round(sums, 12), collapse = ", ")
+    )
   )
 })
 
@@ -64,24 +71,30 @@ test_that("cohort is conserved — short horizon, high p_stay stresses last tunn
     s2 = list(s3 = rep(0.30, 4), die = rep(0.01, 4)),
     s3 = list(die = rep(0.01, 4))
   )
-  m    <- generate_m_list(spec, tp)
-  pop  <- extrapolate_treatseqr(m, spec)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "s3", "die"))
+  pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
     all(abs(sums - 1) < 1e-10),
-    label = paste("colSums deviate from 1:", paste(round(sums, 12), collapse = ", "))
+    label = paste(
+      "colSums deviate from 1:",
+      paste(round(sums, 12), collapse = ", ")
+    )
   )
 })
 
 test_that("cohort is conserved — 3 tunnels", {
   spec <- specify_m(tunnel_lengths = rep(6, 3), pre_tunnel_states = 1)
   tp <- make_tp_list(spec, p_move = 0.08, p_die = 0.04)
-  m    <- generate_m_list(spec, tp)
-  pop  <- extrapolate_treatseqr(m, spec)
+  m <- generate_m_list(spec, tp, c(names(tp), "die"))
+  pop <- extrapolate_treatseqr(m, spec)
   sums <- colSums(pop)
   expect_true(
     all(abs(sums - 1) < 1e-10),
-    label = paste("colSums deviate from 1:", paste(round(sums, 12), collapse = ", "))
+    label = paste(
+      "colSums deviate from 1:",
+      paste(round(sums, 12), collapse = ", ")
+    )
   )
 })
 
@@ -93,8 +106,11 @@ test_that("matrix_size equals pre_tunnels + sum(tunnel_lengths) + 1", {
   check <- function(pre, nt, nc) {
     spec <- specify_m(tunnel_lengths = rep(nc, nt), pre_tunnel_states = pre)
     expected <- pre + nt * nc + 1
-    expect_equal(spec$matrix_size, expected,
-      label = sprintf("pre=%d, n_tunnels=%d, n_cycles=%d", pre, nt, nc))
+    expect_equal(
+      spec$matrix_size,
+      expected,
+      label = sprintf("pre=%d, n_tunnels=%d, n_cycles=%d", pre, nt, nc)
+    )
   }
   check(1, 1, 5)
   check(1, 2, 5)
@@ -120,7 +136,7 @@ test_that("last state of last tunnel self-loops in m2", {
     s2 = list(s3 = rep(0.2, 3), die = rep(0.10, 3)),
     s3 = list(die = rep(0.20, 3))
   )
-  m <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "s3", "die"))
 
   # The self-loop diagonal element must be non-zero (p_stay = 1 - 0.20 = 0.80)
   expect_gt(m$m2[last_tun_state, last_tun_state], 0)
@@ -138,15 +154,15 @@ test_that("last tunnel state population persists when forced p_stay is high", {
   spec <- specify_m(tunnel_lengths = c(3), pre_tunnel_states = 1)
   tp <- list(
     alive = list(tun1 = rep(0.90, 3), die = rep(0.005, 3)),
-    tun1  = list(die  = rep(0.005, 3))
+    tun1 = list(die = rep(0.005, 3))
   )
-  m   <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("alive", "tun1", "die"))
   pop <- extrapolate_treatseqr(m, spec)
 
   # last tunnel state = pre_tunnels + tunnel_lengths[1] = 1 + 3 = 4 (not dead)
   # dead = matrix_size = 5
   last_tun_state <- spec$pre_tunnels + spec$tunnel_lengths[1]
-  dead_state     <- spec$matrix_size
+  dead_state <- spec$matrix_size
 
   # By end of horizon, the last tunnel state should hold non-trivial population
   expect_gt(pop[last_tun_state, ncol(pop)], 0)
@@ -167,25 +183,29 @@ test_that("extrapolate works with pre_tunnel_states = 2", {
   tp <- list(
     state1 = list(
       state2 = rep(0.10, 5),
-      tun1   = rep(0.10, 5),
-      tun2   = rep(0.05, 5),
-      die    = rep(0.05, 5)
+      tun1 = rep(0.10, 5),
+      tun2 = rep(0.05, 5),
+      die = rep(0.05, 5)
     ),
     state2 = list(
       tun1 = rep(0.15, 5),
       tun2 = rep(0.05, 5),
-      die  = rep(0.05, 5)
+      die = rep(0.05, 5)
     ),
     tun1 = list(
       tun2 = rep(0.10, 5),
-      die  = rep(0.10, 5)
+      die = rep(0.10, 5)
     ),
     tun2 = list(
       die = rep(0.20, 5)
     )
   )
 
-  m   <- generate_m_list(spec, tp)
+  m <- generate_m_list(
+    spec,
+    tp,
+    c("state1", "state2", "tun1", "tun2", "die")
+  )
   pop <- extrapolate_treatseqr(m, spec)
 
   # dimensions: nrow = matrix_size, ncol = th + 1 (th = tunnel_lengths[1] = 5)
@@ -203,12 +223,17 @@ test_that("extrapolate works with pre_tunnel_states = 2", {
 test_that("cohort is conserved with pre_tunnel_states = 2, short horizon", {
   spec <- specify_m(tunnel_lengths = rep(4, 2), pre_tunnel_states = 2)
   tp <- list(
-    s1 = list(s2 = rep(0.20, 4), t1 = rep(0.20, 4), t2 = rep(0.10, 4), die = rep(0.02, 4)),
+    s1 = list(
+      s2 = rep(0.20, 4),
+      t1 = rep(0.20, 4),
+      t2 = rep(0.10, 4),
+      die = rep(0.02, 4)
+    ),
     s2 = list(t1 = rep(0.25, 4), t2 = rep(0.10, 4), die = rep(0.02, 4)),
     t1 = list(t2 = rep(0.25, 4), die = rep(0.02, 4)),
     t2 = list(die = rep(0.02, 4))
   )
-  m   <- generate_m_list(spec, tp)
+  m <- generate_m_list(spec, tp, c("s1", "s2", "t1", "t2", "die"))
   pop <- extrapolate_treatseqr(m, spec)
   expect_true(all(abs(colSums(pop) - 1) < 1e-10))
 })

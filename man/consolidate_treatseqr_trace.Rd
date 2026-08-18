@@ -2,9 +2,7 @@
 % Please edit documentation in R/consolidate.R
 \name{consolidate_treatseqr_trace}
 \alias{consolidate_treatseqr_trace}
-\title{Functions to consolidate \code{trace} after it is calculated using
-\code{extrapolate_treatseqr}
-Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks}
+\title{Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks}
 \usage{
 consolidate_treatseqr_trace(full_trace, spec, state_names, m = NULL)
 }
@@ -22,7 +20,7 @@ over time.}
 matrices.}
 
 \item{m}{Optional list as returned by \code{generate_m_list()}. When
-supplied, its per-cycle pre-tunnel matrices (\code{m$m1}) are used to
+supplied, the 3d array of pre-tunnel transition probabilities are used to
 compute true time-in-state (sojourn) curves for the pre-tunnel columns of
 \code{d}, weighting each entry cohort by its size. When \code{NULL}, the
 pre-tunnel columns of \code{d} fall back to wall-time occupancy, which only

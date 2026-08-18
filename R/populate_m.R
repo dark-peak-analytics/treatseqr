@@ -1,9 +1,9 @@
-#' These functions are dedicated to using the validated version of the
-#' transition probabilities which the functions in `validate_tp.R` produce to
-#' generate the sparce matrices required to extrapolate the sequencing model
-#'
-#' See the vignette `sparse-matrix-functions.Rmd` for more details on how these
-#' work.
+# These functions are dedicated to using the validated version of the
+# transition probabilities which the functions in `validate_tp.R` produce to
+# generate the sparce matrices required to extrapolate the sequencing model
+#
+# See the vignette `sparse-matrix-functions.Rmd` for more details on how these
+# work.
 
 #' Generate Markov Transition Matrices (m1 and m2) Based on Model Specification
 #'
@@ -22,29 +22,32 @@
 #'   - m2_ijx: Coordinate matrix for m2.
 #' @param transition_prob_list A list of transition probabilities for each
 #' state.
-#' @param first_state_name A character string naming the initial (pre-tunnel)
-#' state. Defaults to `"initial"`.
-#' @param state_names An optional character vector used to validate
-#' \code{transition_prob_list}. It must equal
-#' \code{names(transition_prob_list)} in the same order, with the absorbing
-#' (death) state appended as the last element. It cannot be used to reorder
-#' states: the matrix layout produced by \code{specify_m()} is positional. If
-#' not supplied, state names and ordering are inferred from
-#' \code{transition_prob_list} itself.
+#' @param state_names A character vector used to validate
+#' \code{transition_prob_list}. It must equal \code{names(transition_prob_list)}
+#' in the same order, with the absorbing (death) state appended as the last
+#' element. It cannot be used to reorder states: the matrix layout produced by
+#' \code{specify_m()} is positional, so a vector in any other order is an
+#' error rather than a request to permute the columns of M.
 #'
-#' @return A list with two elements:
-#'   - m1: A list of sparse matrices (one per cycle) for pre-tunnel states.
+#' @return A list with four elements:
+#'   - m1: A numeric array of dim c(th, n_pre, n_dest) holding the pre-tunnel
+#'     transition probabilities, indexed
+#'     `[cycle, pre-tunnel state, destination]`.
+#'     Destinations are in canonical order (all states, then death).
+#'   - m1_dest: Integer vector giving the column of the full matrix M that each
+#'     destination slot of m1 corresponds to.
 #'   - m2: A sparse matrix for tunnel states.
+#'   - state_names: Character vector of state names, death last.
 #'
 #' @details
 #' The function validates the transition probability list, splits it into
 #' pre-tunnel and tunnel components, and constructs the corresponding sparse
 #' matrices. It ensures that row sums are appropriate and asserts that the
-#' tunnel matrix rows sum to 1. Note that it filters out zero probabilities
-#' before entering them into the sparse matrices. This avoids those values being
-#' put into the matrix and then used in the matrix multiplications, which would
-#' ultimately always result in values of 0 being propagated. This then has a
-#' computational gain for no cost.
+#' tunnel matrix rows sum to 1. Note that it filters out zero probabilities for
+#' m2 before entering them into the sparse matrix. This avoids those values
+#' being put into the matrix and then used in the matrix multiplications, which
+#' would ultimately always result in values of 0 being propagated. This then has
+#' a computational gain for no cost.
 #'
 #' @importFrom Matrix sparseMatrix rowSums
 #' @importFrom assertthat assert_that
@@ -53,8 +56,7 @@
 generate_m_list <- function(
   m_specification,
   transition_prob_list,
-  first_state_name = "initial",
-  state_names = NULL
+  state_names
 ) {
   # validate the transition probability source list.
   # This will return a valid list or an error.
@@ -63,16 +65,51 @@ generate_m_list <- function(
     tunnel_lengths = m_specification$tunnel_lengths,
     state_names = state_names
   )
-  # cover off if the user wants the state_names derivation to be automatic
-  if (is.null(state_names)) {
-    state_names <- rapply(valid_tp, function(x) 1, how = "list")[[1]] |>
-      unlist() |>
-      names()
-    state_names <- c(first_state_name, state_names)
+
+  # go through valid_tp making sure all of state_names except self are inside
+  # each element:
+  for (o_state in state_names[-length(state_names)]) {
+    missing_states <- unique(
+      state_names[
+        state_names != o_state & !state_names %in% names(valid_tp[[o_state]])
+      ]
+    )
+    assertthat::assert_that(
+      length(missing_states) == 0,
+      msg = sprintf(
+        paste0(
+          "State(s) %s are not present in the validated",
+          " transition probability list for '%s'"
+        ),
+        paste(shQuote(missing_states), collapse = ", "),
+        o_state
+      )
+    )
+
+    # check ordering (excluding the origin state itself)
+    expected_order <- state_names[state_names != o_state]
+    actual_order <- names(valid_tp[[o_state]])
+    # ensure origin is removed from the actual order if present
+    actual_order <- actual_order[actual_order != o_state]
+    if (!identical(expected_order, actual_order)) {
+      msg <- sprintf(
+        "Ordering mismatch for '%s'. Expected (excluding origin): %s; got: %s",
+        o_state,
+        paste(shQuote(expected_order), collapse = ", "),
+        paste(shQuote(actual_order), collapse = ", ")
+      )
+      assertthat::assert_that(FALSE, msg = msg)
+    }
   }
 
   # time horizon must be the length of the pre-tunnels. At least 1 pre-tunnel:
   th <- max(unlist(lapply(transition_prob_list[[1]], length)))
+
+  # time horizon must be at least 2
+  assertthat::assert_that(
+    th >= 2,
+    msg = sprintf("Time horizon (%d) must be at least 2 cycles", th)
+  )
 
   # Other important inputs
   pre_tun_states <- m_specification$pre_tunnels
@@ -91,30 +128,28 @@ generate_m_list <- function(
   # all states are tunnels after entering the sequence. These all go into m2
   tp_tun <- valid_tp[(pre_tun_states + 1):(n_states)]
 
-  # TPs will fit into m1 and m2 now. Compute p_stay for each state.
-  m1_list <- lapply(seq_len(th), function(model_cycle) {
-    coord <- m1_ijx
-    x_values <- lapply(seq_len(pre_tun_states), function(state_index) {
-      tp_move <- as.numeric(vapply(
-        .subset2(tp_pre_tun, state_index),
-        FUN.VALUE = numeric(1),
-        FUN = function(x) x[model_cycle]
-      ))
-      tp_stay <- 1 - sum(tp_move, na.rm = TRUE)
-      c(tp_stay, tp_move)
-    })
+  # generate a 3d array with 2nd dimension pre-tunnel state, 3rd dimesnion
+  # destination state (1st is model cycle)
+  dest_names <- c(names(valid_tp), tail(state_names, 1))
+  n_dest <- length(dest_names)
+  m1_dest <- sort(unique(m1_ijx[, "j"]))
 
-    # note that this filters out zero probabilities first to avoid wasting
-    # memory and ultimately computational effort doing 0*0 many times
-    coord[, "x"] <- unlist(x_values)
-    coord_nz <- coord[coord[, "x"] != 0, , drop = FALSE]
-    Matrix::sparseMatrix(
-      i = coord_nz[, "i"],
-      j = coord_nz[, "j"],
-      x = coord_nz[, "x"],
-      dims = c(pre_tun_states, matrix_size)
-    )
-  })
+  # make the 3d array for all pre-tunnel states:
+  m1_array <- array(
+    data = 0,
+    dim = c(th, pre_tun_states, n_dest)
+  )
+
+  # populate it by pulling the numbers in:
+  for (pre_tun in seq_len(pre_tun_states)) {
+    tp_move <- .subset2(tp_pre_tun, pre_tun)
+    cycle_mat <- matrix(0, nrow = th, ncol = n_dest)
+    cycle_mat[, match(names(tp_move), dest_names)] <- do.call(cbind, tp_move)
+
+    # p_stay is complement (1 - sum):
+    cycle_mat[, pre_tun] <- 1 - rowSums(cycle_mat)
+    m1_array[, pre_tun, ] <- cycle_mat
+  }
 
   # Now that m1 is populated, let's move on to m2. It is quite simple because we
   # have already validated the transition probability list
@@ -175,7 +210,8 @@ generate_m_list <- function(
   )
 
   list(
-    m1 = m1_list,
+    m1 = m1_array,
+    m1_dest = m1_dest,
     m2 = sm_m2,
     state_names = state_names
   )

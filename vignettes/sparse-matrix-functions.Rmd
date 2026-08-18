@@ -487,9 +487,10 @@ m_spec <- specify_m(
 
 ## Populating `m1`
 
-The baseline-time transitions will be a list of `r th_cyc` `m1`s in this case, one for
-each cycle. Each of these is a matrix with `1` row and `r m_spec$matrix_size`
-columns.
+The baseline-time (wall time) transitions can be organised in different ways.
+
+The simplest way to think about it is a list of smaller matrices, with one being
+used for each model cycle.
 
 We can compile this manually if we want, by doing the following. First, pull out
 the probabilities for the health state(s) we need to populate once per cycle:
@@ -568,18 +569,82 @@ from `valid_tps`, which have already been validated against conditions like
 non-negativity and summing to 1. The above is just to prove that it is working
 correctly.
 
+### An alternative approach using one 3d array
+
+A less obvious but substantially more computationally efficient approach
+leverages a dense 3d array of values for *all* the pre-tunnel states for all
+time cycles.
+
+This changes the way that the Markov trace is computed by leveraging the
+vectorised nature of the `R` language.
+
+In English, we don't need a sparse matrix for the pre-tunnel states. Instead we
+can use a small matrix multiplication and inject the results into the right
+place in the trace as we go.
+
+Just for an example, let's pull out the transition positions and values from the
+pre-tunnel states, producing a more familiar Excel-like 2d table:
+
+```{r block_approach}
+# The destinations are the columns of M that the pre-tunnel states can reach.
+# Sorting them gives a canonical order, which matters because specify_m() hoists
+# each state's self-transition to the front of its own j coordinates.
+pre_dest <- sort(unique(m1_coord[, "j"]))
+
+ex_tp <- array(0, dim = c(th_cyc, m_spec$pre_tunnels, length(pre_dest)))
+for (model_cycle in seq_len(th_cyc)) {
+  ex_tp[model_cycle, , ] <-
+    as.matrix(m1_list[[model_cycle]])[, pre_dest, drop = FALSE]
+}
+# N.B. indices are: [cycle, pre-tunnel state, destination]
+print(head(ex_tp[, 1, ]))
+```
+
+Because in this case, the number of pre-tunnel states is 1, we only have one of
+these tables. However, if we had more we would then have a 3rd dimension to the
+array, with the 2nd dimension being each pre-tunnel state. We put it in the
+middle position because when we subset in R we can end up with something useful.
+That is, `ex_tp[,1,]` is the Transitions from the first pre-tunnel for the whole
+time horizon to all other states, but `ex_t[1, , ]` is the transitions from
+**all** pre tunnels to all destinations in cycle 1, with pre tunnel as row and
+destination as column. This is the same layout as a typical transition
+probability matrix for a state-transition model!
+
+The above uses the list we made earlier, but in the "real" function, we get all
+the information we need from the `tp_list` directly, after it has been validated
+so we know all the state names match up. We can then use the function `match()`
+to ensure things are in the right order.
+
+Once we have this matrix, we can then change the method for extrapolating the
+Markov trace, which we will come to later. The data structure allows one to pull
+out e.g. the first 5 cycles of TPs for all destination states *from* the first
+pre-tunnel state.
+
+As noted above, this is a more familiar Excel-like table, but it is actually 3d.
+
+Note the downside of this is the raw j order differs per pre-tunnel state
+((1,2,...) for pre1 but (2,1,...) for pre2), and a column-order mistake still
+leaves every row summing to 1, just with the transition probabilities in the
+wrong place...This is what the `sort()` command does, to make sure that even if
+there are multiple pre-tunnel states, they are all in the same order of
+destinations.
+
+### A function to do this automatically
+
 To make this a bit less cumbersome, we can use the function `generate_m_list`
 to do the above using the validated `tp` list for `m1` and `m2` all in one easy
 step. The result will be a list with 2 elements, one for `m1` one for `m2`, with
-`m1` being a list of length time horizon, and `m2` being a single sparse matrix.
+`m1` being a single 3d array, and `m2` being a single sparse matrix, plus a
+couple of extra items to help us along.
 
 ```{r generate_m_list}
 # validate inputs and generate the full matrix m from one function
 m <- generate_m_list(
   m_specification = m_spec,
   transition_prob_list = tp_source,
-  first_state_name = "on_1l"
+  state_names = c("on_1l", "off_1l", "on_2l", "off_2l", "bsc", "die")
 )
+str(m, 1)
 ```
 
 Note that this function automatically filters out probabilities entered as zero.
@@ -600,28 +665,54 @@ Matrix::rowSums(m$m2)
 
 # Extrapolation
 
-From this point it is very simple to generate a Markov trace!
+From this point it is very simple to generate a Markov trace using the list `m1`
+method, or the array method. For the list method, we have a different matrix
+ready to go for every model cycle, and with the array it is a case of pulling
+out the right numbers an using them in a much smaller multiplication:
 
 ```{r extrapolate_manual}
-# output population matrix:
+# --- list method: a different sparse matrix ready for each model cycle
+pop_list <- matrix(0, nrow = m_spec$matrix_size, ncol = th_cyc + 1)
+pop_list[1, 1] <- 1
+
+for (cyc in seq_len(th_cyc) + 1) {
+  pop_list[, cyc] <-
+    as.numeric(
+      pop_list[seq_len(m_spec$pre_tunnels), cyc - 1] %*% m1_list[[cyc - 1]]
+    ) +
+    as.numeric(pop_list[, cyc - 1] %*% m$m2)
+}
+
+# --- array method: scatter-add the pre-tunnel exits into their destinations
 pop <- matrix(0, nrow = m_spec$matrix_size, ncol = th_cyc + 1)
 pop[1, 1] <- 1
+m2t <- Matrix::t(m$m2)
+pre_pos <- seq_len(m_spec$pre_tunnels)
 
-# get the TPs
-m1 <- m$m1
-m2 <- m$m2
-
-# extrapolate the model:
 for (cyc in seq_len(th_cyc) + 1) {
-  pop[, cyc] <-
-    as.numeric(pop[seq_len(m_spec$pre_tunnels), cyc - 1] %*% m1[[cyc - 1]]) +
-    as.numeric(pop[, cyc - 1] %*% m2)
+  pop[, cyc] <- as.numeric(m2t %*% pop[, cyc - 1, drop = FALSE])
+  pop[pre_dest, cyc] <- pop[pre_dest, cyc] +
+    as.numeric(pop[pre_pos, cyc - 1] %*% ex_tp[cyc - 1, , ])
 }
+
+# the two agree
+all.equal(pop_list, pop)
 ```
 
 Believe it or not, that's the Markov model done, for the most part. The next
 step is consolidating information from this matrix `pop`, which has some useful
 properties.
+
+The array approach is called a "scatter add", which is a highly efficient way of
+performing a targeted subset of a matrix multiplication. In effect, it is just
+working out the pre tunnel exits and entries and adding them into the matrix.
+
+Computationally, this scales up much better than having potentially thousands of
+sparse matrix objects each with thousands of columns in it. It gets really
+clever with multiple pre-tunnel states because if the 3rd dimension is dropped
+from the subsetting in `m1[cyc -1 , , 1]` then it will return the transition
+probabilities for cycle `cyc - 1` for all the pre-tunnel states to all the
+destination states in one go, and these will be organised row-wise.
 
 ## Properties of `pop`
 

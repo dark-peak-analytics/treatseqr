@@ -1,5 +1,5 @@
-#' Functions to consolidate `trace` after it is calculated using
-#' `extrapolate_treatseqr`
+# Functions to consolidate `trace` after it is calculated using
+# `extrapolate_treatseqr`
 
 #' Consolidate a full trace matrix into summarized tunnel and pre-tunnel blocks
 #'
@@ -16,7 +16,7 @@
 #' @param state_names A character vector of state names for labeling output
 #' matrices.
 #' @param m Optional list as returned by \code{generate_m_list()}. When
-#' supplied, its per-cycle pre-tunnel matrices (\code{m$m1}) are used to
+#' supplied, the 3d array of pre-tunnel transition probabilities are used to
 #' compute true time-in-state (sojourn) curves for the pre-tunnel columns of
 #' \code{d}, weighting each entry cohort by its size. When \code{NULL}, the
 #' pre-tunnel columns of \code{d} fall back to wall-time occupancy, which only
@@ -45,7 +45,12 @@
 #' mix cohorts entering at different model cycles.
 #'
 #' @export
-consolidate_treatseqr_trace <- function(full_trace, spec, state_names, m = NULL) {
+consolidate_treatseqr_trace <- function(
+  full_trace,
+  spec,
+  state_names,
+  m = NULL
+) {
   pre_tun <- spec$pre_tunnels
   n_states <- pre_tun + length(spec$tunnel_lengths) + 1L
   tunnel_starts <- pre_tun +
@@ -96,19 +101,12 @@ consolidate_treatseqr_trace <- function(full_trace, spec, state_names, m = NULL)
     trace_pre_d <- trace_pre[-(th + 1), , drop = FALSE]
   } else {
     assertthat::assert_that(
-      length(m$m1) == th,
-      msg = "length(m$m1) must match the trace time horizon (ncol - 1)"
+      dim(m$m1)[1] == th,
+      msg = "dim(m$m1)[1] must match the trace time horizon (ncol - 1)"
     )
     # p_stay[s, u]: probability that pre-tunnel state s retains its occupants
     # across the transition from time u - 1 to time u
-    p_stay <- vapply(
-      m$m1,
-      function(m1_cyc) {
-        vapply(pre_blocks, function(s) m1_cyc[s, s], numeric(1))
-      },
-      numeric(pre_tun)
-    )
-    p_stay <- matrix(p_stay, nrow = pre_tun)
+    p_stay <- t(vapply(pre_blocks, function(s) m$m1[, s, s], numeric(th)))
 
     trace_pre_d <- vapply(
       pre_blocks,

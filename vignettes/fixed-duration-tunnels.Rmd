@@ -218,7 +218,13 @@ the model.
 # Generating M and extrapolating
 
 ```{r generate_and_extrapolate}
-m <- generate_m_list(m_specification = m_spec, transition_prob_list = valid_tp)
+m <- generate_m_list(
+  m_specification      = m_spec,
+  transition_prob_list = valid_tp,
+  state_names          = c(
+    "on_trt", "surgery", "failed_surg", "responder", "palliative", "die"
+  )
+)
 trace <- extrapolate_treatseqr(m = m, spec = m_spec)
 ```
 
