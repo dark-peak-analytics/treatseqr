@@ -1,12 +1,14 @@
 Package: treatseqr
 Title: Health Economics Sequence Modelling with Sparse Matrices
-Version: 0.1.0.0000
+Version: 0.1.0
 Authors@R: c(
-  person("Darren", "Burns", , "dburns@darkpeakanalytics.com", role = c("aut", "cre")),
+  person("Darren", "Burns", , "dburns@darkpeakanalytics.com", role = c("aut", "cre", "cph")),
   person("Tristan", "Snowsill", , "t.m.snowsill@exeter.ac.uk", role = "aut"),
   person("Dawn", "Lee", , "D.Lee7@exeter.ac.uk", role = "aut"),
   person("Wael", "Mohammed", , "wmohammed@darkpeakanalytics.com", role = "aut"))
 Description: Tools for health economics sequence modelling using sparse matrices, optimized for performance and memory efficiency.
+URL: https://github.com/dark-peak-analytics/treatseqr
+BugReports: https://github.com/dark-peak-analytics/treatseqr/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -20,6 +22,8 @@ Suggests:
     scales,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Depends: 
+    R (>= 4.1.0)
 Imports: 
     assertthat,
     Matrix

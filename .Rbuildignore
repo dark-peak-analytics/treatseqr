@@ -1,3 +1,7 @@
 ^LICENSE\.md$
 ^doc$
 ^Meta$
+^scrap\.R$
+^temp\.R$
+^cran-comments\.md$
+^\.github$
