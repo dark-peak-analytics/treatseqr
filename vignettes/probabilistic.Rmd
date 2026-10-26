@@ -27,7 +27,7 @@ random numbers which still follow "the rules" (i.e., summing to 1) en mass for
 use in a probabilistic sensitivity analysis (PSA). The PSA is then run and the
 `ggplot2` trace includes credible intervals (CrIs) for each trace.
 
-As with the `fixed-duration-tunnels.Rmd` five model states are:
+As with the `fixed-duration-tunnels.Rmd`, the five model states are:
 
 | State | Type | Tunnel length |
 |---|---|---|
@@ -37,12 +37,10 @@ As with the `fixed-duration-tunnels.Rmd` five model states are:
 | `responder` | Full-length tunnel | `th` cycles |
 | `palliative` | Full-length tunnel | `th` cycles |
 
-Because tunnels 1 and 2 are short and tunnels 3 and 4 span the full model
-horizon, this model requires the variable-length `tunnel_lengths` argument.
 
 # Model specification
 
-We set the time horizon to 20 cycles and define the tunnel lengths individually:
+In a PSA setting the specification is exactly the same:
 
 ```{r specify_m}
 th <- 20L
@@ -66,9 +64,56 @@ probability vectors to all other states (or `NULL`/omit for structural zeros).
 With variable-length tunnels, each vector must match the length of the
 **source** state's tunnel (or the pre-tunnel horizon `th` for `on_trt`).
 
-Just to make things very simple, we just use some very simple fixed transitions
-this time, but these could be made time-dependent here without any changes
-required in the rest of the code:
+In keeping with `fixed-duration-tunnels.Rmd`, the transitions are very simple.
+In a "real model", the user of `treatseqr` needs to make their own way of
+reliably generating transition probabilities in a probabilistic setting. Because
+this can considerably vary from model to model, it is outside the scope of the
+package and should be left up to you, the modeller.
+
+For instance, if you are using Kaplan-Meier (KM) for first line, followed by external
+digitized KM data for subsequent lines, we would advise to do the following:
+
+1. Fit parametric survival models to the KM data for each line of therapy, using
+   `flexsurv`, `survextrap`, `cuRe`, `rstpm2` and so on.
+2. Get the parameters from the fitted models, including the uncertainty taking
+   covariance into account (e.g., variance-covariance matrix from `flexsurv`,
+others where appropriate). Make sure you know how these are transformed when
+provided to you (sometimes you will need to do some maths on paper for this.
+Make sure to document it in the function you write to "convert" it to the form
+you will use the for the PSA).
+3. use random uniform draws (i.e., `runif()`) to generate streams of random
+   numbers, and develop a function to take random draws of parameters. The
+simplest example is `mvtnorm::rmvnorm()` for simple models that just need a set
+of parameters that are correlated. This does it all in one step including
+generating the uniform draws. However, you must be very careful to set the
+random seed so that the sequence is the same every time you run the PSA for the
+same number of draws. Often, one can get into a situation whereby the random
+stream can more easily be conserved by pre-drawing the uniform draws and then
+feeding that into a similar function of your own making. Note that you can look
+at the source code for `mvtnorm::rmvnorm()` to see the more familiar "chol"
+method, which is quite simple to implement in an efficient way. This boils down
+to:
+
+```r
+set.seed(12938)
+n <- 1000
+mean <- c(1, 2, 3)
+sigma <- matrix(c(1, 0.5, 0.3,
+                  0.5, 1, 0.2,
+                  0.3, 0.2, 1), nrow = 3)
+R <- chol(sigma, pivot = TRUE)
+draws <- matrix(rnorm(n * ncol(sigma)), nrow = n, byrow = TRUE) %*% R
+result <- sweep(draws, 2, mean, "+")
+round(t(stats::cor(result)),1)
+```
+
+leveraging already existing quantile
+functions (e.g., `qweibull()`, `qexp()`, `qgamma()`, etc.) to generate
+multivariate normal random draws *of the hazard*, and **not for survival**. For
+example, for simple `flexsurv` models there are in-built functions for this
+already. (e.g. exponential hazard: `flexsurv::hexp()`, exponential
+cumulative hazard: `flexsurv::Hexp()`)
+
 
 ```{r define_tps}
 tp_source <- list(
