@@ -68,10 +68,14 @@ In keeping with `fixed-duration-tunnels.Rmd`, the transitions are very simple.
 In a "real model", the user of `treatseqr` needs to make their own way of
 reliably generating transition probabilities in a probabilistic setting. Because
 this can considerably vary from model to model, it is outside the scope of the
-package and should be left up to you, the modeller.
+package and should be left up to you, the modeller. Usually in `R` there will
+be a way to do this, and we cover the most common approach (multivariate normal
+draws) below. The key is to make sure that the transition probabilities sum to 1
+and converge on the deterministic values you would use in a base-case analysis.
 
 For instance, if you are using Kaplan-Meier (KM) for first line, followed by external
-digitized KM data for subsequent lines, we would advise to do the following:
+digitized KM data for subsequent lines (what we anticipate to be the most common
+use case for this package), we would advise to do the following:
 
 1. Fit parametric survival models to the KM data for each line of therapy, using
    `flexsurv`, `survextrap`, `cuRe`, `rstpm2` and so on.
@@ -84,10 +88,9 @@ you will use the for the PSA).
 3. use random uniform draws (i.e., `runif()`) to generate streams of random
    numbers, and develop a function to take random draws of parameters. The
 simplest example is `mvtnorm::rmvnorm()` for simple models that just need a set
-of parameters that are correlated. This does it all in one step including
-generating the uniform draws. However, you must be very careful to set the
-random seed so that the sequence is the same every time you run the PSA for the
-same number of draws. Often, one can get into a situation whereby the random
+of parameters that are correlated. Note that this incorporates the random number
+draws as well so you have less than ideal control and have to be careful about
+the random seed. Often, one can get into a situation whereby the random
 stream can more easily be conserved by pre-drawing the uniform draws and then
 feeding that into a similar function of your own making. Note that you can look
 at the source code for `mvtnorm::rmvnorm()` to see the more familiar "chol"
@@ -96,26 +99,97 @@ to:
 
 ```r
 set.seed(12938)
-n <- 1000
+n <- 10000
 mean <- c(1, 2, 3)
 sigma <- matrix(c(1, 0.5, 0.3,
                   0.5, 1, 0.2,
                   0.3, 0.2, 1), nrow = 3)
+# This is a fix for near singular matrices, which can happen in practice when
+# the correlation is very high
 R <- chol(sigma, pivot = TRUE)
+R <- R[, order(attr(R, "pivot"))]
+
+# make the draws themselves
 draws <- matrix(rnorm(n * ncol(sigma)), nrow = n, byrow = TRUE) %*% R
 result <- sweep(draws, 2, mean, "+")
-round(t(stats::cor(result)),1)
+
+# test that the correlation of the output draws is the same as the input for the
+# variance-coavariance matrix
+identical(round(stats::cor(result),1), sigma)
 ```
 
-leveraging already existing quantile
-functions (e.g., `qweibull()`, `qexp()`, `qgamma()`, etc.) to generate
-multivariate normal random draws *of the hazard*, and **not for survival**. For
-example, for simple `flexsurv` models there are in-built functions for this
-already. (e.g. exponential hazard: `flexsurv::hexp()`, exponential
-cumulative hazard: `flexsurv::Hexp()`)
+4. Now that you have parametric model parameters for every PSA iteration, you
+   can pass them to the appropriate functions *for the hazard*, and **not for
+survival**. For example, for simple `flexsurv` models there are in-built
+functions for this already. (e.g. exponential hazard: `flexsurv::hexp()`,
+exponential cumulative hazard: `flexsurv::Hexp()`). You can use these to
+calculate transition probabilities for each model cycle that sum to 1, and
+correspond to each other for the different states. Note that this often needs an
+"additive hazards" assumption, such that on the hazard scale transitions add up.
 
 
 ```{r define_tps}
+param_source <- list(
+  # ----------------------------------------------------------------
+  # on_trt (pre-tunnel): vectors of length th
+  # ----------------------------------------------------------------
+  on_trt = list(
+    surgery = flexsurv::hexp(
+      rlnorm(
+        1000,
+        meanlog = log(0.05),
+        sdlog = 0.005
+      )
+    ),
+    failed_surg = NULL,
+    responder = NULL,
+    palliative = rep(0.02, th),
+    die = rep(0.01, th)
+  ),
+
+  # ----------------------------------------------------------------
+  # surgery (fixed-duration, 3 cycles):
+  #   d = 1, 2 : patients recover — low exit probability
+  #   d = 3    : decision-tree node — p_stay = 0, all probability
+  #              allocated to response, non-response, or death
+  # ----------------------------------------------------------------
+  surgery = list(
+    failed_surg = c(0, 0, 0.35),
+    responder   = c(0, 0, 0.55),
+    palliative  = c(0.01, 0.01, 0),
+    die         = c(0.04, 0.04, 0.10)
+  ),
+
+  # ----------------------------------------------------------------
+  # failed_surg (fixed-duration, 2 cycles):
+  #   d = 1 : elevated mortality; patients may opt to palliative
+  #   d = 2 : even higher mortality; p_stay = 0.70 (holding state)
+  #           — patients who have not yet exited accumulate here
+  #           with the same d = 2 mortality applied every subsequent
+  #           cycle
+  # ----------------------------------------------------------------
+  failed_surg = list(
+    responder  = c(0, 0),
+    palliative = c(0.10, 0.10),
+    die        = c(0.15, 0.20)
+  ),
+
+  # ----------------------------------------------------------------
+  # responder (full-length, th cycles): good outcomes
+  # ----------------------------------------------------------------
+  responder = list(
+    palliative = seq(0.02, 0.05, length.out = th),
+    die        = seq(0.01, 0.05, length.out = th)
+  ),
+
+  # ----------------------------------------------------------------
+  # palliative (full-length, th cycles): poor outcomes
+  # ----------------------------------------------------------------
+  palliative = list(
+    die = rep(0.25, th)
+  )
+)
+
 tp_source <- list(
   # ----------------------------------------------------------------
   # on_trt (pre-tunnel): vectors of length th
