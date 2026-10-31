@@ -264,6 +264,18 @@ point (e.g. exponential for state 1 to 2 but Weibull for state 1 to 3). Beware
 of censoring rules here as it is very important you are not double-counting
 events!
 
+As an example, you cannot just use PFS from the starting health state in an
+oncology setting for the transition from progression free to the 2nd living
+state (let's say 2nd line treatment). The hazard must be specifically for that
+transition, meaning that the KM must be censored for everything else (death,
+going to any other health state e.g. the patient has determined they do not want
+any more treatment so has moved to a supportive care or no-treatment state and
+the end of the pathway). This is very important as if you do not do this, you
+will overestimate the rate at which patients leave progression-free, and send
+some to second line who should have died. In this example, the appropriate
+endpoint would be time to second line therapy, so it is less complicated than it
+sounds!
+
 
 ```{r define_tps}
 param_source <- list(
