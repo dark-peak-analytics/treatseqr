@@ -95,7 +95,8 @@ stream can more easily be conserved by pre-drawing the uniform draws and then
 feeding that into a similar function of your own making. Note that you can look
 at the source code for `mvtnorm::rmvnorm()` to see the more familiar "chol"
 method, which is quite simple to implement in an efficient way. This boils down
-to:
+to the below. Note that you can store the `chol()` ahead of time so you don't
+need to calculate it thousands of times, just once per PSA:
 
 ```r
 set.seed(12938)
@@ -109,13 +110,53 @@ sigma <- matrix(c(1, 0.5, 0.3,
 R <- chol(sigma, pivot = TRUE)
 R <- R[, order(attr(R, "pivot"))]
 
-# make the draws themselves
-draws <- matrix(rnorm(n * ncol(sigma)), nrow = n, byrow = TRUE) %*% R
+# Multivariate normal draws. inverse-transform sampling using chol method:
+rng <- runif(n * ncol(sigma))
+
+# NOTE: using qnorm() with uniform draws only is standard normal draws.
+draws <- matrix(qnorm(rng), nrow = n, byrow = TRUE) %*% R
 result <- sweep(draws, 2, mean, "+")
 
 # test that the correlation of the output draws is the same as the input for the
-# variance-coavariance matrix
+# variance-coavariance matrix (should be TRUE). note you can drop rng now, or
+# keep for auditing/QC later. Recommend to make this an option in your
+# function(s) in your model.
+identical(round(colMeans(result), 1), mean)
 identical(round(stats::cor(result),1), sigma)
+
+# As a simple function you can use for most cases:
+#' A simple function to perform inverse-transform sampling for multivariate
+#' normal draws using the chol method.
+#'
+#' @param rng matrix of columns equal to length of params, and rows for number
+#' of draws
+#' @param params the vector of mean values (e.g. regression coefficients)
+#' @oaram vcov variance-covariance matrix for the parameters (e.g. regression
+#' coefficients)
+#' @param R optional: pre-calculated chol of vcov (to save time if doing many
+#' draws)
+#'
+#'
+mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
+  # you have to provide one of vcov or R, but not both.
+  stopifnot(!is.null(vcov) || !is.null(R))
+  # optional: pre-calculated chol or do it here
+  if (is.null(R)) {
+    R <- chol(vcov, pivot = TRUE)
+    R <- R[, order(attr(R, "pivot"))]
+  }
+
+  # validation checks:
+  stopifnot(ncol(R) == length(params))
+  stopifnot(ncol(rng) == length(params))
+  stopifnot(nrow(rng) > 0)
+
+  # draws using our uniform values for repeatability:
+  draws <- matrix(qnorm(rng), nrow = nrow(rng), byrow = TRUE) %*% R
+  sweep(draws, 2, params, "+")
+}
+
+
 ```
 
 4. Now that you have parametric model parameters for every PSA iteration, you
