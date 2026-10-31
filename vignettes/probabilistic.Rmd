@@ -195,6 +195,24 @@ computes for you. Hazards add, probabilities do not: converting each destination
 separately as $1 - \exp(-\Delta H_k(t))$ and summing overstates the exits and
 can exceed 1.
 
+
+```{r time_units}
+# NOTE: be very careful here about the time unit of the analysis and the time
+# unit of the model! hazards are in continuous time, and transition
+# probabilities are in discrete time. This means you need to align
+
+# days in an average year takes leap years into account
+days_in_a_year <- 365.25
+
+# let's say the time unit of the survival analysis is months (days in an average
+# month are 30.44)
+tuota <- 30.44 / days_in_a_year
+
+# but the CE model is in weeks.
+cl <- 7 / days_in_a_year
+```
+
+
 ```{r prob_probs_function}
 #' Convert cumulative hazards to competing-risk transition probabilities
 #'
@@ -236,7 +254,7 @@ p <- get_prob_tps(
   cl = cl
 )
 all.equal(p[, "die"], rep(1 - exp(-0.1 * cl / tuota), 5))
-````
+```
 
 The reason we are writing these ourself is important here. There is a function
 `flexsurv::pmatrix.simfs()` which can use multi-state modelling for this, but it
@@ -248,37 +266,6 @@ events!
 
 
 ```{r define_tps}
-# NOTE: be very careful here about the time unit of the analysis and the time
-# unit of the model! hazards are in continuous time, and transition
-# probabilities are in discrete time. This means you need to align
-
-# days in an average year takes leap years into account
-days_in_a_year <- 365.25
-
-# let's say the time unit of the survival analysis is months (days in an average
-# month are 30.44)
-tuota <- 30.44 / days_in_a_year
-
-# but the CE model is in weeks.
-cl <- 7 / days_in_a_year
-
-# we then need to convert the time unit of the survival analysis to the time
-# unit of the model
-
-#' hazard to probability including time step conversion. anchor on years.
-#' @param h hazard rate (in original tuota)
-#' @param tuota time unit of the hazard (in years)
-#' @param cl time unit of the model (in years)
-hazard_to_prob <- function(h, tuota, cl) {
-  # convert hazard to probability using the formula:
-  # p = 1 - exp(-h * t)
-  # where t is the time step in the same units as h
-  t <- cl / tuota
-  1 - exp(-h * t)
-}
-
-
-
 param_source <- list(
   # ----------------------------------------------------------------
   # on_trt (pre-tunnel): vectors of length th
