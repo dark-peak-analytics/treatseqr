@@ -111,10 +111,10 @@ R <- chol(sigma, pivot = TRUE)
 R <- R[, order(attr(R, "pivot"))]
 
 # Multivariate normal draws. inverse-transform sampling using chol method:
-rng <- runif(n * ncol(sigma))
+rng <- matrix(runif(n * ncol(sigma)), nrow = n) 
 
 # NOTE: using qnorm() with uniform draws only is standard normal draws.
-draws <- matrix(qnorm(rng), nrow = n, byrow = TRUE) %*% R
+draws <- qnorm(rng) %*% R
 result <- sweep(draws, 2, mean, "+")
 
 # test that the correlation of the output draws is the same as the input for the
@@ -160,13 +160,91 @@ mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
 ```
 
 4. Now that you have parametric model parameters for every PSA iteration, you
-   can pass them to the appropriate functions *for the hazard*, and **not for
-survival**. For example, for simple `flexsurv` models there are in-built
-functions for this already. (e.g. exponential hazard: `flexsurv::hexp()`,
-exponential cumulative hazard: `flexsurv::Hexp()`). You can use these to
-calculate transition probabilities for each model cycle that sum to 1, and
-correspond to each other for the different states. Note that this often needs an
-"additive hazards" assumption, such that on the hazard scale transitions add up.
+   can pass them to the appropriate functions *for (cumulative) hazards*, and
+**not for survival**. For example, for simple `flexsurv` models there are
+in-built functions for this already. (e.g. exponential hazard:
+`flexsurv::hexp()`, exponential cumulative hazard: `flexsurv::Hexp()`). You can
+use these to calculate transition probabilities for each model cycle that sum to
+1, and correspond to each other for the different states. Note that this often
+needs an "additive hazards" assumption, such that on the hazard scale
+transitions add up. Difference in cumulative hazard between two time points:
+
+Transitions add up. For each destination state $k$, the change in cumulative
+hazard over model cycle $t$ (i.e. the interval $[t-1, t)$) is:
+
+$$
+\Delta H_k(t) = H_k(t) - H_k(t-1)
+$$
+
+The probability of leaving the current state during cycle $t$ uses the *total*
+cumulative hazard across all destinations:
+
+$$
+p_{\text{exit}}(t) = 1 - \exp\left(-\sum_{j} \Delta H_j(t)\right)
+$$
+
+This is then shared between destinations in proportion to each one's cumulative
+hazard:
+
+$$
+p_k(t) = \frac{\Delta H_k(t)}{\sum_{j} \Delta H_j(t)} \, p_{\text{exit}}(t)
+$$
+
+The probability of staying is $1 - p_{\text{exit}}(t)$, which `treatseqr`
+computes for you. Hazards add, probabilities do not: converting each destination
+separately as $1 - \exp(-\Delta H_k(t))$ and summing overstates the exits and
+can exceed 1.
+
+```{r prob_probs_function}
+#' Convert cumulative hazards to competing-risk transition probabilities
+#'
+#' Evaluates each destination's cumulative hazard at the model's cycle
+#' boundaries, then converts the per-cycle increments to transition
+#' probabilities. The probability of leaving the state uses the total hazard
+#' across all destinations, and is shared between destinations in proportion
+#' to each one's hazard increment. This is exact when the hazards are
+#' proportional within a cycle.
+#'
+#' @param cum_hazards named list of cumulative hazard functions, one per
+#'   destination state. Each takes a vector of times in the survival model's
+#'   time unit and returns H(t), e.g. `function(t) flexsurv::Hweibull(t, shape, scale)`.
+#' @param n_cycles number of model cycles to evaluate (`th` for pre-tunnel
+#'   states, the tunnel length for tunnel states).
+#' @param tuota time unit of the survival analysis, in years.
+#' @param cl cycle length of the model, in years.
+#'
+#' @return `n_cycles` x K matrix of transition probabilities (one column per
+#'   destination, named as in `cum_hazards`). Rows sum to the probability of
+#'   exiting the state; `treatseqr` computes the probability of staying.
+get_prob_tps <- function(cum_hazards, n_cycles, tuota, cl) {
+  # efficiently perform the calculations on the whole block at once:
+  times <- seq.int(0, n_cycles) * cl / tuota
+  H_mat <- vapply(cum_hazards, function(H) H(times), numeric(n_cycles + 1)) # (n+1) x K
+  dH <- diff(H_mat) # n x K; diff() on a matrix works down the rows
+  total <- rowSums(dH)
+  p_exit <- 1 - exp(-total)
+
+  # matrix with the transitions out of the state. treatseqr works out p_stay
+  dH * ifelse(total > 0, p_exit / total, 0) # length-n vector recycles down the columns
+}
+
+# quick test:
+p <- get_prob_tps(
+  list(die = function(t) flexsurv::Hexp(t, rate = 0.1)),
+  n_cycles = 5,
+  tuota = tuota,
+  cl = cl
+)
+all.equal(p[, "die"], rep(1 - exp(-0.1 * cl / tuota), 5))
+````
+
+The reason we are writing these ourself is important here. There is a function
+`flexsurv::pmatrix.simfs()` which can use multi-state modelling for this, but it
+is slow and over the course of many PSA draws it becomes unruly. this is a very
+close approximation even if the shape of the distributions is different per exit
+point (e.g. exponential for state 1 to 2 but Weibull for state 1 to 3). Beware
+of censoring rules here as it is very important you are not double-counting
+events!
 
 
 ```{r define_tps}
@@ -187,7 +265,10 @@ cl <- 7 / days_in_a_year
 # we then need to convert the time unit of the survival analysis to the time
 # unit of the model
 
-# TODO: hazard to probability including time step conversion. anchor on years.
+#' hazard to probability including time step conversion. anchor on years.
+#' @param h hazard rate (in original tuota)
+#' @param tuota time unit of the hazard (in years)
+#' @param cl time unit of the model (in years)
 hazard_to_prob <- function(h, tuota, cl) {
   # convert hazard to probability using the formula:
   # p = 1 - exp(-h * t)
@@ -195,6 +276,7 @@ hazard_to_prob <- function(h, tuota, cl) {
   t <- cl / tuota
   1 - exp(-h * t)
 }
+
 
 
 param_source <- list(
