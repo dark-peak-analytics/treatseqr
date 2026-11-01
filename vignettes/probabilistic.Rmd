@@ -140,6 +140,16 @@ identical(round(stats::cor(result),1), sigma)
 mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
   # you have to provide one of vcov or R, but not both.
   stopifnot(!is.null(vcov) || !is.null(R))
+
+  # params and vcov should be named because we don't want to lose track:
+  stopifnot(
+    !is.null(names(params)),
+    all(nzchar(names(params))),
+    colnames(vcov) == rownames(vcov),
+    colnames(vcov) == names(params)
+  )
+
+
   # optional: pre-calculated chol or do it here
   if (is.null(R)) {
     R <- chol(vcov, pivot = TRUE)
@@ -153,7 +163,9 @@ mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
 
   # draws using our uniform values for repeatability:
   draws <- matrix(qnorm(rng), nrow = nrow(rng), byrow = TRUE) %*% R
-  sweep(draws, 2, params, "+")
+  out <- sweep(draws, 2, params, "+")
+  colnames(out) <- names(params)
+  out
 }
 
 
@@ -429,9 +441,17 @@ that iteration.
 
 ```{r psa_set_up}
 get_params_psa <- function(prob_params, iter) {
-  rapply(prob_params, function(m) m[, iter], classes = "matrix", how = "replace")
+  rapply(
+    prob_params,
+    function(m) m[, iter],
+    classes = "matrix",
+    how = "replace"
+  )
 }
-str(get_params_psa(flexsurv_output, prob_params, 1))
+str(get_params_psa(prob_params, 1))
+# example: for iteration 1, the shape and scale for failed surgery to
+# palliative:
+get_params_psa(prob_params, 1)$failed_surg$palliative$params
 ```
 
 
