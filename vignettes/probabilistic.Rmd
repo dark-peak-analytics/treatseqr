@@ -289,44 +289,52 @@ deterministic examples:
 flexsurv_output <- list(
   on_trt = list(
     surgery = list(
+      dist = "exponential",
       params = c(rate = 0.05),
-      vcov   = matrix(0.005^2, nrow = 1, ncol = 1)
+      vcov = matrix(0.005^2, nrow = 1, ncol = 1)
     )
   ),
   surgery = list(
     failed_surg = list(
+      dist = "weibull",
       params = c(shape = 1.5, scale = 3),
-      vcov   = matrix(c(0.01, 0, 0, 0.01), nrow = 2)
+      vcov = matrix(c(0.01, 0, 0, 0.01), nrow = 2)
     ),
     responder = list(
+      dist = "weibull",
       params = c(shape = 1.2, scale = 5),
-      vcov   = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
+      vcov = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
     )
   ),
   surgery = list(
     palliative = list(
+      dist = "weibull",
       params = c(shape = 1.1, scale = 7),
-      vcov   = matrix(c(0.03, 0, 0, 0.03), nrow = 2)
+      vcov = matrix(c(0.03, 0, 0, 0.03), nrow = 2)
     ),
     die = list(
+      dist = "exponential",
       params = c(rate = 0.01),
-      vcov   = matrix(0.002^2, nrow = 1, ncol = 1)
+      vcov = matrix(0.002^2, nrow = 1, ncol = 1)
     )
   ),
   failed_surg = list(
     palliative = list(
+      dist = "weibull",
       params = c(shape = 1.3, scale = 4),
-      vcov   = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
+      vcov = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
     ),
     die = list(
+      dist = "exponential",
       params = c(rate = 0.02),
-      vcov   = matrix(0.003^2, nrow = 1, ncol = 1)
+      vcov = matrix(0.003^2, nrow = 1, ncol = 1)
     )
   ),
   palliative = list(
     die = list(
+      dist = "exponential",
       params = c(rate = 0.25),
-      vcov   = matrix(0.01^2, nrow = 1, ncol = 1)
+      vcov = matrix(0.01^2, nrow = 1, ncol = 1)
     )
   )
 )
@@ -379,11 +387,14 @@ draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
   Map(function(state, state_off) {
     Map(function(dest, dest_off) {
       cols <- dest_off + seq_along(dest$params)
-      t(
-        mvnorm_draws(
-          rng[, cols, drop = FALSE],
-          dest$params,
-          vcov = dest$vcov
+      list(
+        dist = dest$dist,
+        params = t(
+          mvnorm_draws(
+            rng[, cols, drop = FALSE],
+            dest$params,
+            vcov = dest$vcov
+          )
         )
       )
     }, state, state_off + offsets(n_par(state)))
@@ -415,6 +426,13 @@ When we perform the PSA, we can then follow a set process from this point onward
 5. Validate the transition probability matrix for that iteration of the PSA, and
    then run the model for that iteration, storing the consolidated trace for
 that iteration.
+
+```{r psa_set_up}
+get_params_psa <- function(prob_params, iter) {
+  rapply(prob_params, function(m) m[, iter], classes = "matrix", how = "replace")
+}
+str(get_params_psa(flexsurv_output, prob_params, 1))
+```
 
 
 ```{r define_tps}
