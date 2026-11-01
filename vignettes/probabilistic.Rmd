@@ -276,7 +276,7 @@ all.equal(p[, "die"], rep(1 - exp(-0.1 * cl / tuota), 5))
 
 The reason we are writing these ourself is important here. There is a function
 `flexsurv::pmatrix.simfs()` which can use multi-state modelling for this, but it
-is slow and over the course of many PSA draws it becomes unruly. this is a very
+is slow and over the course of many PSA draws it becomes unruly. This is a very
 close approximation even if the shape of the distributions is different per exit
 point (e.g. exponential for state 1 to 2 but Weibull for state 1 to 3). Beware
 of censoring rules here as it is very important you are not double-counting
@@ -297,7 +297,7 @@ sounds!
 ## Usual expectation of stats output
 
 Usually, the output from statistics will be parameters and variance-covariance.
-For this exapmle, we will emulate that with some of the more simple
+For this example, we will emulate that with some of the more simple
 distributions (exponential and Weibull). Once you have selected the best fitting
 distributions for your base case and want to vary them in the PSA, you would
 organise the parameters in the same way structurally as the TP data in our
@@ -378,7 +378,7 @@ Because `R` is vectorised, drawing in this way is very fast and efficient, and
 you can use the same random number stream for each PSA. Essentially, you
 pre-draw all the parameters in one go for all the PSA iterations, and then
 individually use them to do the extrapolation for each. This prevents the model
-from using a lot of memory from storing all transition probabilies for all
+from using a lot of memory from storing all transition probabilities for all
 iterations at once.
 
 ```{r draw_params}
@@ -406,7 +406,7 @@ draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
 
   # cycle through states then destinations, each consuming the next block of
   # columns in rng. This is the same as a nested for loop, but more efficient
-  # and less verbose. N.B., Map(f, list1, list2). lists are flexsurv_output and
+  # and less verbose. N.B., Map(f, list1, list2). Lists are flexsurv_output and
   # offsets(n_per_state) for the outer loop, and state and the offset for the
   # inner loop. Visually, it moves along the columns of rng in the right places
   # for each set of transitions.
@@ -429,7 +429,7 @@ draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
   }, flexsurv_output, offsets(n_per_state))
 }
 
-# because of column-major (colums faster than rows) in R, for each PSA we pull
+# because of column-major (columns faster than rows) in R, for each PSA we pull
 # out a column from the parameter set:
 
 prob_params <- draw_params(
@@ -447,7 +447,7 @@ When we perform the PSA, we can then follow a set process from this point onward
 1. Pull out the parameters for a given iteration of the PSA
 2. Use parameters the distribution name to extrapolate the cumulative hazard for
    each destination state
-3. Use those to compute the transition probabiilities for each cycle of the
+3. Use those to compute the transition probabilities for each cycle of the
    model, using the `get_prob_tps()` function defined above.
 4. Compute `p_stay` as `1 - p_exit` and populate the transition probability matrix for
    that iteration of the PSA.
@@ -525,7 +525,7 @@ cum_hazards <- generate_cum_haz(
 )
 ```
 
-Now that we have the cumulative hazards, we can get the transition prbabilities
+Now that we have the cumulative hazards, we can get the transition probabilities
 for this PSA iteration. This means we can start to connect everything up!
 
 
@@ -658,11 +658,11 @@ psa_output <- vapply(
 )
 ```
 
-The above is your trace for all of the PSA iterations. you can use this to
+The above is your trace for all of the PSA iterations. You can use this to
 compute your cost-effectiveness outputs like this in one go, or can compute them
 on the iteration level by manipulating the function . This could dramatically
-reduce the amoutn of data coming out of the model (as the trace is the biggest
+reduce the amount of data coming out of the model (as the trace is the biggest
 object typically and for PSA you usually only need top-level outputs).
 
-oFully integrating the treatseqr engine into your model's PSA is up to you, but
+Fully integrating the treatseqr engine into your model's PSA is up to you, but
 this example is likely to be very flexible and essentially applies to any model.
