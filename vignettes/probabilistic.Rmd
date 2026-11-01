@@ -162,7 +162,7 @@ mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
   stopifnot(nrow(rng) > 0)
 
   # draws using our uniform values for repeatability:
-  draws <- matrix(qnorm(rng), nrow = nrow(rng), byrow = TRUE) %*% R
+  draws <- qnorm(rng) %*% R
   out <- sweep(draws, 2, params, "+")
   colnames(out) <- names(params)
   out
