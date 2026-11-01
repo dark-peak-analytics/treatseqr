@@ -226,6 +226,17 @@ cl <- 7 / days_in_a_year
 
 
 ```{r prob_probs_function}
+# H_list: named list of cumulative hazard vectors (length n + 1, starting at t = 0),
+# one per destination. Returns an n x K matrix of competing-risk TPs.
+cum_haz_to_tps <- function(H_list) {
+  H_mat <- do.call(cbind, H_list) # (n+1) x K, keeps destination names
+  dH <- diff(H_mat)
+  total <- rowSums(dH)
+  p_exit <- 1 - exp(-total)
+  dH * ifelse(total > 0, p_exit / total, 0)
+}
+
+
 #' Convert cumulative hazards to competing-risk transition probabilities
 #'
 #' Evaluates each destination's cumulative hazard at the model's cycle
@@ -237,7 +248,8 @@ cl <- 7 / days_in_a_year
 #'
 #' @param cum_hazards named list of cumulative hazard functions, one per
 #'   destination state. Each takes a vector of times in the survival model's
-#'   time unit and returns H(t), e.g. `function(t) flexsurv::Hweibull(t, shape, scale)`.
+#'   time unit and returns H(t), e.g.
+#'   `function(t) flexsurv::Hweibull(t, shape, scale)`.
 #' @param n_cycles number of model cycles to evaluate (`th` for pre-tunnel
 #'   states, the tunnel length for tunnel states).
 #' @param tuota time unit of the survival analysis, in years.
@@ -246,16 +258,10 @@ cl <- 7 / days_in_a_year
 #' @return `n_cycles` x K matrix of transition probabilities (one column per
 #'   destination, named as in `cum_hazards`). Rows sum to the probability of
 #'   exiting the state; `treatseqr` computes the probability of staying.
+# get_prob_tps() then becomes a thin wrapper, so the existing test still holds
 get_prob_tps <- function(cum_hazards, n_cycles, tuota, cl) {
-  # efficiently perform the calculations on the whole block at once:
   times <- seq.int(0, n_cycles) * cl / tuota
-  H_mat <- vapply(cum_hazards, function(H) H(times), numeric(n_cycles + 1)) # (n+1) x K
-  dH <- diff(H_mat) # n x K; diff() on a matrix works down the rows
-  total <- rowSums(dH)
-  p_exit <- 1 - exp(-total)
-
-  # matrix with the transitions out of the state. treatseqr works out p_stay
-  dH * ifelse(total > 0, p_exit / total, 0) # length-n vector recycles down the columns
+  cum_haz_to_tps(lapply(cum_hazards, function(H) H(times)))
 }
 
 # quick test:
@@ -304,6 +310,11 @@ flexsurv_output <- list(
       dist = "exp",
       params = c(rate = 0.05),
       vcov = matrix(0.005^2, nrow = 1, ncol = 1)
+    ),
+    die = list(
+      dist = "exp",
+      params = c(rate = 0.01),
+      vcov = matrix(0.002^2, nrow = 1, ncol = 1)
     )
   ),
   surgery = list(
@@ -316,9 +327,14 @@ flexsurv_output <- list(
       dist = "weibull",
       params = c(shape = 1.2, scale = 5),
       vcov = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
+    ),
+    die = list(
+      dist = "exp",
+      params = c(rate = 0.05),
+      vcov = matrix(0.005^2, nrow = 1, ncol = 1)
     )
   ),
-  surgery = list(
+  responder = list(
     palliative = list(
       dist = "weibull",
       params = c(shape = 1.1, scale = 7),
@@ -493,16 +509,52 @@ generate_cum_haz <- function(time_points, params) {
   lapply(params, function(state) {
     lapply(state, function(dest) {
       H_func <- route_method_cum_haz(dest$dist)
-      do.call(H_func, c(list(time_points), as.list(dest$params)))
+      do.call(
+        H_func,
+        c(list(time_points), as.list(dest$params))
+      )
     })
   })
 }
 time_points <- seq.int(0, th) * cl / tuota
-generate_cum_haz(
+# finally, we arrive at the cumulative hazard for each trasision we have data
+# for:
+cum_hazards <- generate_cum_haz(
   time_points = time_points,
   params = get_params_psa(prob_params, 1)
 )
 ```
+
+Now that we have the cumulative hazards, we can get the transition prbabilities
+for this PSA iteration. This means we can start to connect everything up!
+
+
+```{r psa_setup_full}
+n_cycles <- c(
+  on_trt = th,
+  surgery = 3L,
+  failed_surg = 2L,
+  responder = th,
+  palliative = th
+)
+
+psa_iteration <- 1
+cum_haz_i <- generate_cum_haz(
+  time_points,
+  get_params_psa(prob_params, psa_iteration)
+)
+
+tp_source_i <- Map(function(state, n) {
+  tp <- cum_haz_to_tps(state)[seq_len(n), , drop = FALSE]
+  as.list(as.data.frame(tp))
+}, cum_haz_i, n_cycles[names(cum_haz_i)])
+
+valid_tp_i <- validate_tp_source(
+  tp_source_i,
+  tunnel_lengths = c(3L, 2L, th, th)
+)
+```
+
 
 ```{r define_tps}
 param_source <- list(
