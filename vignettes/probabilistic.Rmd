@@ -100,7 +100,7 @@ need to calculate it thousands of times, just once per PSA:
 
 ```{r mvnorm_draws}
 set.seed(12938)
-n <- 10000
+n <- 1000
 mean <- c(1, 2, 3)
 sigma <- matrix(c(
   1, 0.5, 0.3,
@@ -434,7 +434,7 @@ draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
 
 prob_params <- draw_params(
   flexsurv_output = flexsurv_output,
-  n_draws = 1000,
+  n_draws = n,
   seed = 12345
 )
 str(prob_params)
@@ -593,6 +593,76 @@ matplot(
 Now that we've done all that, we can populate a 3d array with the probabilistic
 trace:
 
+```{r psa_runner}
+run_psa_iteration <- function(
+  time_points,
+  prob_params,
+  n_cycles,
+  state_names,
+  th,
+  iter,
+  m_spec
+) {
+  cum_haz_i <- generate_cum_haz(time_points, get_params_psa(prob_params, iter))
+
+  tp_source_i <- Map(function(state, n) {
+    tp <- cum_haz_to_tps(state)[seq_len(n), , drop = FALSE]
+    as.list(as.data.frame(tp))
+  }, cum_haz_i, n_cycles[names(cum_haz_i)])
+  tp_source_i <- tp_source_i[setdiff(state_names, "die")]
+
+  valid_tp_i <- validate_tp_source(
+    tp_source_i,
+    tunnel_lengths = c(3L, 2L, th, th)
+  )
+  m_i <- generate_m_list(m_spec, valid_tp_i, state_names = state_names)
+  trace_i <- extrapolate_treatseqr(m = m_i, spec = m_spec)
+  consolidate_treatseqr_trace(
+    trace_i,
+    m_spec,
+    state_names
+  )
+}
 
 
+# run iteration 1:
+head(run_psa_iteration(
+  time_points,
+  prob_params,
+  n_cycles,
+  state_names,
+  th,
+  iter = 1,
+  m_spec
+)$t, 2)
 
+# run the entire psa of n iterations.
+psa_output <- vapply(
+  seq_len(n),
+  function(iter) {
+    run_psa_iteration(
+      time_points,
+      prob_params,
+      n_cycles,
+      state_names,
+      th,
+      iter,
+      m_spec
+    )$t
+  },
+  matrix(
+    NA_real_,
+    nrow = th + 1,
+    ncol = length(state_names)
+  )
+)
+```
+
+The above is your trace for all of the PSA iterations. you can use this to
+compute your cost-effectiveness outputs like this in one go, or can compute them
+on the iteration level by manipulating the function . This could dramatically
+reduce the amoutn of data coming out of the model (as the trace is the biggest
+object typically and for PSA you usually only need top-level outputs).
+
+oFully integrating the treatseqr engine into your model's PSA is up to you, but
+this example is likely to be very flexible and essentially applies to any model.
