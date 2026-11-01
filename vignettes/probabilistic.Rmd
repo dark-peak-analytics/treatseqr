@@ -276,6 +276,146 @@ some to second line who should have died. In this example, the appropriate
 endpoint would be time to second line therapy, so it is less complicated than it
 sounds!
 
+## Usual expectation of stats output
+
+Usually, the output from statistics will be parameters and variance-covariance.
+For this exapmle, we will emulate that with some of the more simple
+distributions (exponential and Weibull). Once you have selected the best fitting
+distributions for your base case and want to vary them in the PSA, you would
+organise the parameters in the same way structurally as the TP data in our
+deterministic examples:
+
+```{r stats_output}
+flexsurv_output <- list(
+  on_trt = list(
+    surgery = list(
+      params = c(rate = 0.05),
+      vcov   = matrix(0.005^2, nrow = 1, ncol = 1)
+    )
+  ),
+  surgery = list(
+    failed_surg = list(
+      params = c(shape = 1.5, scale = 3),
+      vcov   = matrix(c(0.01, 0, 0, 0.01), nrow = 2)
+    ),
+    responder = list(
+      params = c(shape = 1.2, scale = 5),
+      vcov   = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
+    )
+  ),
+  surgery = list(
+    palliative = list(
+      params = c(shape = 1.1, scale = 7),
+      vcov   = matrix(c(0.03, 0, 0, 0.03), nrow = 2)
+    ),
+    die = list(
+      params = c(rate = 0.01),
+      vcov   = matrix(0.002^2, nrow = 1, ncol = 1)
+    )
+  ),
+  failed_surg = list(
+    palliative = list(
+      params = c(shape = 1.3, scale = 4),
+      vcov   = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
+    ),
+    die = list(
+      params = c(rate = 0.02),
+      vcov   = matrix(0.003^2, nrow = 1, ncol = 1)
+    )
+  ),
+  palliative = list(
+    die = list(
+      params = c(rate = 0.25),
+      vcov   = matrix(0.01^2, nrow = 1, ncol = 1)
+    )
+  )
+)
+```
+
+If you can arrange the parameters and variance-covariance matrices in this way,
+you can then use a function to produce "blocks" of transitions, with one column
+per iteration of the PSA. `R` is "column-major" so the columns are the
+iterations and the rows are the cycles, as it would be very slow to do it the
+other way around. 
+
+Because `R` is vectorised, drawing in this way is very fast and efficient, and
+you can use the same random number stream for each PSA. Essentially, you
+pre-draw all the parameters in one go for all the PSA iterations, and then
+individually use them to do the extrapolation for each. This prevents the model
+from using a lot of memory from storing all transition probabilies for all
+iterations at once.
+
+```{r draw_params}
+draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
+  # either give the seed or the rng, but not both
+  stopifnot(is.null(seed) || is.null(rng))
+
+  # number of parameters per destination within a state, and the column offset
+  # at which each block starts (0-based)
+  n_par <- function(state) lengths(lapply(state, `[[`, "params"))
+  offsets <- function(n) cumsum(c(0, n))[seq_along(n)]
+
+  n_per_state <- vapply(flexsurv_output, function(s) sum(n_par(s)), numeric(1))
+  n_total <- sum(n_per_state)
+
+  # either use pre-drawn values or draw them here after setting seed.
+  if (!is.null(rng)) {
+    stopifnot(is.matrix(rng))
+    stopifnot(nrow(rng) == n_draws)
+    stopifnot(ncol(rng) == n_total)
+  } else {
+    set.seed(seed)
+    rng <- matrix(runif(n_draws * n_total), nrow = n_draws)
+  }
+
+  # cycle through states then destinations, each consuming the next block of
+  # columns in rng. This is the same as a nested for loop, but more efficient
+  # and less verbose. N.B., Map(f, list1, list2). lists are flexsurv_output and
+  # offsets(n_per_state) for the outer loop, and state and the offset for the
+  # inner loop. Visually, it moves along the columns of rng in the right places
+  # for each set of transitions.
+  #
+  # The twist is that because R is column-major, we transpose the output!
+  Map(function(state, state_off) {
+    Map(function(dest, dest_off) {
+      cols <- dest_off + seq_along(dest$params)
+      t(
+        mvnorm_draws(
+          rng[, cols, drop = FALSE],
+          dest$params,
+          vcov = dest$vcov
+        )
+      )
+    }, state, state_off + offsets(n_par(state)))
+  }, flexsurv_output, offsets(n_per_state))
+}
+
+# because of column-major (colums faster than rows) in R, for each PSA we pull
+# out a column from the parameter set:
+
+prob_params <- draw_params(
+  flexsurv_output = flexsurv_output,
+  n_draws = 1000,
+  seed = 12345
+)
+str(prob_params)
+```
+
+Now we have parametric survival modelling parameters for every state, in the
+original TUoTA (time unit of the analysis) and cycle length (CL) of the model.
+When we perform the PSA, we can then follow a set process from this point onwards:
+
+1. Pull out the parameters for a given iteration of the PSA
+2. Use parameters the distribution name to extrapolate the cumulative hazard for
+   each destination state
+3. Use those to compute the transition probabiilities for each cycle of the
+   model, using the `get_prob_tps()` function defined above.
+4. Compute `p_stay` as `1 - p_exit` and populate the transition probability matrix for
+   that iteration of the PSA.
+5. Validate the transition probability matrix for that iteration of the PSA, and
+   then run the model for that iteration, storing the consolidated trace for
+that iteration.
+
 
 ```{r define_tps}
 param_source <- list(
