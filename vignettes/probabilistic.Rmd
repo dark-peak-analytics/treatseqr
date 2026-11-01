@@ -301,7 +301,7 @@ deterministic examples:
 flexsurv_output <- list(
   on_trt = list(
     surgery = list(
-      dist = "exponential",
+      dist = "exp",
       params = c(rate = 0.05),
       vcov = matrix(0.005^2, nrow = 1, ncol = 1)
     )
@@ -325,7 +325,7 @@ flexsurv_output <- list(
       vcov = matrix(c(0.03, 0, 0, 0.03), nrow = 2)
     ),
     die = list(
-      dist = "exponential",
+      dist = "exp",
       params = c(rate = 0.01),
       vcov = matrix(0.002^2, nrow = 1, ncol = 1)
     )
@@ -337,14 +337,14 @@ flexsurv_output <- list(
       vcov = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
     ),
     die = list(
-      dist = "exponential",
+      dist = "exp",
       params = c(rate = 0.02),
       vcov = matrix(0.003^2, nrow = 1, ncol = 1)
     )
   ),
   palliative = list(
     die = list(
-      dist = "exponential",
+      dist = "exp",
       params = c(rate = 0.25),
       vcov = matrix(0.01^2, nrow = 1, ncol = 1)
     )
@@ -454,6 +454,55 @@ str(get_params_psa(prob_params, 1))
 get_params_psa(prob_params, 1)$failed_surg$palliative$params
 ```
 
+Now we can use a "router" for the method to get the cumulative hazard:
+
+
+```{r get_cum_haz_func}
+# router to the method to get cumulative hazard for each distribution. Downside
+# is you need to know what to put in each function!
+route_method_cum_haz <- function(dist) {
+  switch(tolower(dist),
+    exp = flexsurv::Hexp, # rate
+    exponential = flexsurv::Hexp, # rate
+    weibull = flexsurv::Hweibull, # shape, scale (AFT)
+    weibullph = flexsurv::HweibullPH, # shape, scale (PH)
+    gompertz = flexsurv::Hgompertz, # shape, rate
+    lnorm = flexsurv::Hlnorm, # meanlog, sdlog
+    llogis = flexsurv::Hllogis, # shape, scale
+    gamma = flexsurv::Hgamma, # shape, rate
+    gengamma = flexsurv::Hgengamma, # mu, sigma, Q
+    genf = flexsurv::Hgenf, # mu, sigma, Q, P. rarely used
+    stop("Unsupported distribution: '", dist, "'")
+  )
+}
+# for example, get the weibull method and give me the first year:
+route_method_cum_haz("weibull")(
+  x = 0:52 * (7 / 365.25),
+  shape = 1.5,
+  scale = 3
+) |> round(2)
+```
+
+Because we have the string to go in there for all of our parameter sets, we can
+automatically cycle through the states and destinations to get the cumulative
+hazard functions for each destination state. We can then use those to compute
+the transition probabilities for each cycle of the model.
+
+```{r cumulative_hazards}
+generate_cum_haz <- function(time_points, params) {
+  lapply(params, function(state) {
+    lapply(state, function(dest) {
+      H_func <- route_method_cum_haz(dest$dist)
+      do.call(H_func, c(list(time_points), as.list(dest$params)))
+    })
+  })
+}
+time_points <- seq.int(0, th) * cl / tuota
+generate_cum_haz(
+  time_points = time_points,
+  params = get_params_psa(prob_params, 1)
+)
+```
 
 ```{r define_tps}
 param_source <- list(
