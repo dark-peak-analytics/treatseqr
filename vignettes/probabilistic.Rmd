@@ -48,7 +48,7 @@ As with the `fixed-duration-tunnels.Rmd`, the five model states are:
 In a PSA setting the specification is exactly the same:
 
 ```{r specify_m}
-th <- 20L
+th <- 200L
 
 m_spec <- specify_m(
   tunnel_lengths    = c(3L, 2L, th, th),
@@ -886,6 +886,88 @@ the iteration level by having `run_psa_iteration()` return costs and QALYs
 rather than the trace. The latter can dramatically reduce the amount of data
 coming out of the model: the trace is typically the biggest object, and for a
 PSA you usually only need the top-level outputs.
+
+## Plotting the probabilistic trace
+
+To summarise the PSA we take quantiles across the third dimension of
+`psa_output` (the iterations) for every cycle and state. It is also useful to
+overlay the base case, run at the point estimates, to see where it sits inside
+the credible interval. The point estimates go through exactly the same pipeline
+as a PSA iteration, with the inverse transforms applied to the `coefs` and the
+node pseudo-counts normalised:
+
+```{r base_case}
+point_params <- lapply(flexsurv_output, function(state) {
+  lapply(state, function(dest) {
+    coef_mat <- matrix(
+      dest$coefs,
+      nrow = 1,
+      dimnames = list(NULL, names(dest$coefs))
+    )
+    list(
+      dist = dest$dist,
+      params = drop(flexsurv_inv_transform(coef_mat, dest$dist))
+    )
+  })
+})
+point_nodes <- lapply(node_output, function(alpha) alpha / sum(alpha))
+
+tp_source_bc <- build_tp_source(
+  generate_cum_haz(time_points, point_params),
+  point_nodes,
+  n_cycles,
+  state_names
+)
+m_bc <- generate_m_list(m_spec, tp_source_bc, state_names = state_names)
+trace_bc <- consolidate_treatseqr_trace(
+  extrapolate_treatseqr(m = m_bc, spec = m_spec),
+  m_spec,
+  state_names
+)$t
+```
+
+```{r cri_plot, fig.width = 7, fig.height = 5}
+# 2.5%, 50% and 97.5% quantiles over iterations: a 3 x (th + 1) x n_states array
+q <- apply(psa_output, c(1, 2), quantile, probs = c(0.025, 0.5, 0.975))
+
+trace_summary <- data.frame(
+  cycle = rep(seq_len(th + 1) - 1, times = length(state_names)),
+  state = factor(
+    rep(state_names, each = th + 1),
+    levels = state_names
+  ),
+  lower = as.vector(q[1, , ]),
+  median = as.vector(q[2, , ]),
+  upper = as.vector(q[3, , ]),
+  base_case = as.vector(trace_bc)
+)
+
+ggplot2::ggplot(trace_summary, ggplot2::aes(x = cycle)) +
+  ggplot2::geom_ribbon(
+    ggplot2::aes(ymin = lower, ymax = upper, fill = state),
+    alpha = 0.25
+  ) +
+  ggplot2::geom_line(ggplot2::aes(y = median, colour = state)) +
+  ggplot2::geom_line(
+    ggplot2::aes(y = base_case),
+    colour = "black",
+    linetype = "dashed"
+  ) +
+  ggplot2::facet_wrap(~state, scales = "free_y") +
+  ggplot2::labs(
+    x = "Cycle",
+    y = "Proportion of cohort",
+    title = "PSA trace: median and 95% CrI (dashed = base case)"
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(legend.position = "none")
+```
+
+The base case sits inside the credible interval but, as noted earlier, is not
+the same as the PSA median or mean because the transforms are non-linear. This
+is a useful plot to produce routinely: a base case that sits near the edge of
+(or outside) the credible interval usually indicates a problem with the
+parameter draws, such as drawing on the wrong scale.
 
 Fully integrating the treatseqr engine into your model's PSA is up to you, but
 this example is likely to be very flexible and essentially applies to any model.
