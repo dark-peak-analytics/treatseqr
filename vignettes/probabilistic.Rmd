@@ -100,31 +100,31 @@ need to calculate it thousands of times, just once per PSA:
 
 ```{r mvnorm_draws}
 set.seed(12938)
-n <- 1000
-mean <- c(1, 2, 3)
-sigma <- matrix(c(
+n_illus <- 1000
+mu_illus <- c(a = 1, b = 2, c = 3)
+sigma_illus <- matrix(c(
   1, 0.5, 0.3,
   0.5, 1, 0.2,
   0.3, 0.2, 1
 ), nrow = 3)
 # This is a fix for near singular matrices, which can happen in practice when
 # the correlation is very high
-R <- chol(sigma, pivot = TRUE)
-R <- R[, order(attr(R, "pivot"))]
+R_illus <- chol(sigma_illus, pivot = TRUE)
+R_illus <- R_illus[, order(attr(R_illus, "pivot"))]
 
 # Multivariate normal draws. inverse-transform sampling using chol method:
-rng <- matrix(runif(n * ncol(sigma)), nrow = n)
+rng_illus <- matrix(runif(n_illus * ncol(sigma_illus)), nrow = n_illus)
 
 # NOTE: using qnorm() with uniform draws only is standard normal draws.
-draws <- qnorm(rng) %*% R
-result <- sweep(draws, 2, mean, "+")
+draws_illus <- qnorm(rng_illus) %*% R_illus
+result_illus <- sweep(draws_illus, 2, mu_illus, "+")
 
-# test that the correlation of the output draws is the same as the input for the
-# variance-coavariance matrix (should be TRUE). note you can drop rng now, or
-# keep for auditing/QC later. Recommend to make this an option in your
-# function(s) in your model.
-identical(round(colMeans(result), 1), mean)
-identical(round(stats::cor(result), 1), sigma)
+# test that the means and correlations of the output draws are close to the
+# inputs (Monte Carlo error means they will not be exact, hence a tolerance).
+# Note you can drop rng now, or keep for auditing/QC later. Recommend to make
+# this an option in your function(s) in your model.
+max(abs(colMeans(result_illus) - mu_illus)) < 0.1
+max(abs(stats::cor(result_illus) - sigma_illus)) < 0.1
 
 # As a simple function you can use for most cases:
 #' A simple function to perform inverse-transform sampling for multivariate
@@ -132,28 +132,35 @@ identical(round(stats::cor(result), 1), sigma)
 #'
 #' @param rng matrix of columns equal to length of params, and rows for number
 #' of draws
-#' @param params the vector of mean values (e.g. regression coefficients)
-#' @oaram vcov variance-covariance matrix for the parameters (e.g. regression
+#' @param params the (named) vector of mean values (e.g. regression
 #' coefficients)
+#' @param vcov variance-covariance matrix for the parameters (e.g. regression
+#' coefficients). Must have dimnames matching `names(params)`.
 #' @param R optional: pre-calculated chol of vcov (to save time if doing many
-#' draws)
+#' draws). Provide exactly one of `vcov` or `R`.
 #'
 #'
 mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
   # you have to provide one of vcov or R, but not both.
-  stopifnot(!is.null(vcov) || !is.null(R))
+  stopifnot(xor(is.null(vcov), is.null(R)))
 
-  # params and vcov should be named because we don't want to lose track:
+  # params must be named because we don't want to lose track:
   stopifnot(
     !is.null(names(params)),
-    all(nzchar(names(params))),
-    colnames(vcov) == rownames(vcov),
-    colnames(vcov) == names(params)
+    all(nzchar(names(params)))
   )
 
-
-  # optional: pre-calculated chol or do it here
+  # optional: pre-calculated chol or do it here. If vcov given, its
+  # dimnames must match params in order so that nothing is silently
+  # misaligned. NOTE: `colnames(vcov) == names(params)` would be logical(0)
+  # when vcov has no dimnames, and stopifnot(logical(0)) passes, so use
+  # identical() instead.
   if (is.null(R)) {
+    stopifnot(
+      is.matrix(vcov),
+      identical(colnames(vcov), names(params)),
+      identical(rownames(vcov), names(params))
+    )
     R <- chol(vcov, pivot = TRUE)
     R <- R[, order(attr(R, "pivot"))]
   }
@@ -304,65 +311,72 @@ organise the parameters in the same way structurally as the TP data in our
 deterministic examples:
 
 ```{r stats_output}
+# small helper so every vcov includes parameter names:
+named_vcov <- function(x, nms) {
+  m <- matrix(x, nrow = length(nms), ncol = length(nms))
+  dimnames(m) <- list(nms, nms)
+  m
+}
+
 flexsurv_output <- list(
   on_trt = list(
     surgery = list(
       dist = "exp",
       params = c(rate = 0.05),
-      vcov = matrix(0.005^2, nrow = 1, ncol = 1)
+      vcov = named_vcov(0.005^2, "rate")
     ),
     die = list(
       dist = "exp",
       params = c(rate = 0.01),
-      vcov = matrix(0.002^2, nrow = 1, ncol = 1)
+      vcov = named_vcov(0.002^2, "rate")
     )
   ),
   surgery = list(
     failed_surg = list(
       dist = "weibull",
       params = c(shape = 1.5, scale = 3),
-      vcov = matrix(c(0.01, 0, 0, 0.01), nrow = 2)
+      vcov = named_vcov(c(0.01, 0, 0, 0.01), c("shape", "scale"))
     ),
     responder = list(
       dist = "weibull",
       params = c(shape = 1.2, scale = 5),
-      vcov = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
+      vcov = named_vcov(c(0.02, 0, 0, 0.02), c("shape", "scale"))
     ),
     die = list(
       dist = "exp",
       params = c(rate = 0.05),
-      vcov = matrix(0.005^2, nrow = 1, ncol = 1)
+      vcov = named_vcov(0.005^2, "rate")
     )
   ),
   responder = list(
     palliative = list(
       dist = "weibull",
       params = c(shape = 1.1, scale = 7),
-      vcov = matrix(c(0.03, 0, 0, 0.03), nrow = 2)
+      vcov = named_vcov(c(0.03, 0, 0, 0.03), c("shape", "scale"))
     ),
     die = list(
       dist = "exp",
       params = c(rate = 0.01),
-      vcov = matrix(0.002^2, nrow = 1, ncol = 1)
+      vcov = named_vcov(0.002^2, "rate")
     )
   ),
   failed_surg = list(
     palliative = list(
       dist = "weibull",
       params = c(shape = 1.3, scale = 4),
-      vcov = matrix(c(0.02, 0, 0, 0.02), nrow = 2)
+      vcov = named_vcov(c(0.02, 0, 0, 0.02), c("shape", "scale"))
     ),
     die = list(
       dist = "exp",
       params = c(rate = 0.02),
-      vcov = matrix(0.003^2, nrow = 1, ncol = 1)
+      vcov = named_vcov(0.003^2, "rate")
     )
   ),
   palliative = list(
     die = list(
       dist = "exp",
       params = c(rate = 0.25),
-      vcov = matrix(0.01^2, nrow = 1, ncol = 1)
+      vcov = named_vcov(0.01^2, "rate")
     )
   )
 )
@@ -432,9 +446,10 @@ draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
 # because of column-major (columns faster than rows) in R, for each PSA we pull
 # out a column from the parameter set:
 
+n_psa <- 1000
 prob_params <- draw_params(
   flexsurv_output = flexsurv_output,
-  n_draws = n,
+  n_draws = n_psa,
   seed = 12345
 )
 str(prob_params)
@@ -636,9 +651,9 @@ head(run_psa_iteration(
   m_spec
 )$t, 2)
 
-# run the entire psa of n iterations.
+# run the psa:
 psa_output <- vapply(
-  seq_len(n),
+  seq_len(n_psa),
   function(iter) {
     run_psa_iteration(
       time_points,
