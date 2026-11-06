@@ -381,10 +381,11 @@ flexsurv_output <- list(
     )
   ),
   failed_surg = list(
+    # NOTE: exponential on purpose, see "Fixed-duration tunnels" below
     palliative = list(
-      dist = "weibull",
-      coefs = c(shape = log(1.3), scale = log(4)),
-      vcov = named_vcov(c(0.10, 0.10), c("shape", "scale"), rho = -0.3)
+      dist = "exp",
+      coefs = c(rate = log(0.27)),
+      vcov = named_vcov(0.15, "rate")
     ),
     die = list(
       dist = "exp",
@@ -399,6 +400,39 @@ flexsurv_output <- list(
       vcov = named_vcov(0.04, "rate")
     )
   )
+)
+```
+
+## Fixed-duration tunnels, decision nodes, and holding states
+
+Survival-driven hazards describe the *time-to-event* transitions. They do not
+reproduce the two fixed-duration structures from `fixed-duration-tunnels.Rmd`,
+and it is easy to get this wrong:
+
+- `surgery` is a 3-cycle tunnel with a **decision-tree node** at `d = 3`: every
+  patient leaves at the end of the tunnel, split between `failed_surg`,
+  `responder` and `die`. A cumulative-hazard extrapolation evaluated at
+  `d = 1, 2, 3` gives a small exit probability at each cycle and a large
+  `p_stay` at `d = 3`. `treatseqr` then treats `d = 3` as a holding state and
+  re-applies the week-3 hazard increment forever, which is not the model we
+  want. The node has to be imposed explicitly on the last cycle.
+- `failed_surg` is a 2-cycle tunnel with a **holding state** at `d = 2`: the
+  `d = 2` transition probabilities are re-applied every subsequent cycle. That is
+  a constant-hazard (exponential) extrapolation from the end of the tunnel, so
+  the hazard feeding it should be constant too. Freezing the week-2 increment of
+  a Weibull with a rising hazard would quietly understate exits for the rest of
+  the horizon. This is why `failed_surg -> palliative` is specified as `exp`
+  above.
+
+For the node we need a probabilistic split that always sums to 1. The natural
+choice is a Dirichlet distribution, parameterised as pseudo-counts (here the
+`0.35 / 0.55 / 0.10` split from the deterministic vignette, as if observed in
+100 patients). A Dirichlet draw is a set of independent gamma draws normalised
+to sum to 1, so it can use the same uniform streams as everything else:
+
+```{r node_output}
+node_output <- list(
+  surgery = c(failed_surg = 35, responder = 55, die = 10)
 )
 ```
 
@@ -525,18 +559,63 @@ range(prob_params$on_trt$die$params)
 range(prob_params$surgery$failed_surg$params["shape", ])
 ```
 
-Now we have parametric survival modelling parameters for every state, in the
-original TUoTA (time unit of the analysis) and cycle length (CL) of the model.
-When we perform the PSA, we can then follow a set process from this point onwards:
+The decision-node splits are drawn in the same way, one Dirichlet per node,
+with streams named `state.node.destination`. Each state's draws come back as a
+`destinations x n_draws` matrix so they can be indexed by iteration exactly like
+the survival parameters:
 
-1. Pull out the parameters for a given iteration of the PSA
+```{r draw_nodes}
+draw_nodes <- function(node_output, n_draws, rng = NULL, seed = NULL) {
+  stopifnot(xor(is.null(seed), is.null(rng)))
+
+  stream_names <- unlist(lapply(names(node_output), function(state_name) {
+    paste(state_name, "node", names(node_output[[state_name]]), sep = ".")
+  }))
+
+  if (is.null(rng)) {
+    rng <- draw_uniforms(n_draws, stream_names, seed)
+  }
+  stopifnot(
+    is.matrix(rng),
+    nrow(rng) == n_draws,
+    all(stream_names %in% colnames(rng))
+  )
+
+  Map(function(alpha, state_name) {
+    cols <- paste(state_name, "node", names(alpha), sep = ".")
+    # Dirichlet(alpha) = independent Gamma(alpha_k, 1) draws, normalised.
+    # qgamma() on the uniform streams keeps this fully reproducible.
+    g <- qgamma(rng[, cols, drop = FALSE], shape = rep(alpha, each = n_draws))
+    g <- g / rowSums(g)
+    out <- t(g)
+    dimnames(out) <- list(names(alpha), NULL)
+    out
+  }, node_output, names(node_output))
+}
+
+node_params <- draw_nodes(node_output, n_draws = n_psa, seed = 54321)
+str(node_params)
+
+# centred on the deterministic split, and every column sums to 1:
+round(rowMeans(node_params$surgery), 3)
+all(abs(colSums(node_params$surgery) - 1) < 1e-12)
+```
+
+Now we have parametric survival modelling parameters for every state, in the
+original TUoTA (time unit of the analysis) and cycle length (CL) of the model,
+plus a draw for each decision node. When we perform the PSA, we can then follow
+a set process from this point onwards:
+
+1. Pull out the parameters (and node splits) for a given iteration of the PSA
 2. Use parameters the distribution name to extrapolate the cumulative hazard for
    each destination state
 3. Use those to compute the transition probabilities for each cycle of the
    model, using the `get_prob_tps()` function defined above.
-4. Compute `p_stay` as `1 - p_exit` and populate the transition probability matrix for
+4. For any state with a decision node, overwrite the last cycle of its tunnel
+   with the node split (so `p_stay = 0` there).
+5. Compute `p_stay` as `1 - p_exit` and populate the transition probability matrix for
    that iteration of the PSA.
-5. Validate the transition probability matrix for that iteration of the PSA, and
+6. Validate the transition probability matrix for that iteration of the PSA, and
    then run the model for that iteration, storing the consolidated trace for
 that iteration.
 
@@ -550,9 +629,10 @@ get_params_psa <- function(prob_params, iter) {
   )
 }
 str(get_params_psa(prob_params, 1))
-# example: for iteration 1, the shape and scale for failed surgery to
-# palliative:
-get_params_psa(prob_params, 1)$failed_surg$palliative$params
+# example: for iteration 1, the shape and scale for surgery to responder, and
+# the node split at the end of the surgery tunnel:
+get_params_psa(prob_params, 1)$surgery$responder$params
+get_params_psa(node_params, 1)$surgery
 ```
 
 Now we can use a "router" for the method to get the cumulative hazard:
@@ -623,17 +703,6 @@ n_cycles <- c(
   palliative = th
 )
 
-psa_iteration <- 1
-cum_haz_i <- generate_cum_haz(
-  time_points,
-  get_params_psa(prob_params, psa_iteration)
-)
-
-tp_source_i <- Map(function(state, n) {
-  tp <- cum_haz_to_tps(state)[seq_len(n), , drop = FALSE]
-  as.list(as.data.frame(tp))
-}, cum_haz_i, n_cycles[names(cum_haz_i)])
-
 # make sure the states are ordered in the right way
 state_names <- c(
   "on_trt",
@@ -643,13 +712,55 @@ state_names <- c(
   "palliative",
   "die"
 )
-tp_source_i <- tp_source_i[setdiff(state_names, "die")]
+
+# Turn one iteration's cumulative hazards (and node splits) into a tp_source
+# list in the order treatseqr expects.
+build_tp_source <- function(cum_haz_i, nodes_i, n_cycles, state_names) {
+  tp_source_i <- Map(function(state, n) {
+    tp <- cum_haz_to_tps(state)[seq_len(n), , drop = FALSE]
+    as.list(as.data.frame(tp))
+  }, cum_haz_i, n_cycles[names(cum_haz_i)])
+
+  for (state_name in names(nodes_i)) {
+    split <- nodes_i[[state_name]]
+    n <- n_cycles[[state_name]]
+    tp_state <- tp_source_i[[state_name]]
+    for (dest_name in union(names(tp_state), names(split))) {
+      if (is.null(tp_state[[dest_name]])) tp_state[[dest_name]] <- numeric(n)
+      tp_state[[dest_name]][n] <- if (dest_name %in% names(split)) {
+        split[[dest_name]]
+      } else {
+        0
+      }
+    }
+    tp_source_i[[state_name]] <- tp_state
+  }
+
+  tp_source_i[setdiff(state_names, "die")]
+}
+
+psa_iteration <- 1
+cum_haz_i <- generate_cum_haz(
+  time_points,
+  get_params_psa(prob_params, psa_iteration)
+)
+tp_source_i <- build_tp_source(
+  cum_haz_i,
+  get_params_psa(node_params, psa_iteration),
+  n_cycles,
+  state_names
+)
 
 # validate the TPs:
 valid_tp_i <- validate_tp_source(
   tp_source_i,
   tunnel_lengths = c(3L, 2L, th, th)
 )
+
+# the surgery tunnel has p_stay = 0 at d = 3 (the decision node), and the
+# holding state at the end of failed_surg has a constant exit probability:
+round(1 - Reduce(`+`, valid_tp_i$surgery), 3)
+round(1 - Reduce(`+`, valid_tp_i$failed_surg), 3)
 
 # compile m
 mlist <- generate_m_list(
@@ -682,6 +793,7 @@ trace:
 run_psa_iteration <- function(
   time_points,
   prob_params,
+  node_params,
   n_cycles,
   state_names,
   th,
@@ -689,12 +801,12 @@ run_psa_iteration <- function(
   m_spec
 ) {
   cum_haz_i <- generate_cum_haz(time_points, get_params_psa(prob_params, iter))
-
-  tp_source_i <- Map(function(state, n) {
-    tp <- cum_haz_to_tps(state)[seq_len(n), , drop = FALSE]
-    as.list(as.data.frame(tp))
-  }, cum_haz_i, n_cycles[names(cum_haz_i)])
-  tp_source_i <- tp_source_i[setdiff(state_names, "die")]
+  tp_source_i <- build_tp_source(
+    cum_haz_i,
+    get_params_psa(node_params, iter),
+    n_cycles,
+    state_names
+  )
 
   valid_tp_i <- validate_tp_source(
     tp_source_i,
@@ -714,6 +826,7 @@ run_psa_iteration <- function(
 head(run_psa_iteration(
   time_points,
   prob_params,
+  node_params,
   n_cycles,
   state_names,
   th,
@@ -728,6 +841,7 @@ psa_output <- vapply(
     run_psa_iteration(
       time_points,
       prob_params,
+      node_params,
       n_cycles,
       state_names,
       th,
