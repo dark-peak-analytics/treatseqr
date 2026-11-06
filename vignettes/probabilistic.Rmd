@@ -415,6 +415,16 @@ individually use them to do the extrapolation for each. This prevents the model
 from using a lot of memory from storing all transition probabilities for all
 iterations at once.
 
+It helps to draw the uniforms in a local scope so the global random number
+generator is left as you found it. Otherwise `set.seed()` somewhere else in the
+model means something different depending on whether the PSA draws have run or
+not. Second, every uniform stream should have a name
+(`state.destination.parameter`) and, these should be looked it up by name
+rather than by column position. If you later add a transition, or want to
+compare two scenarios with common random numbers, the streams feeding the
+transitions you did not touch stay exactly the same. You can also keep the named
+`rng` matrix for auditing, and pass it back in via the `rng` argument.
+
 ```{r draw_params}
 # Map the draws from flexsurv's estimation scale back to the natural scale
 # the H*() functions expect. flexsurv.dists records, per distribution, the
@@ -432,39 +442,59 @@ flexsurv_inv_transform <- function(draws, dist) {
   draws
 }
 
+# Draw the uniform streams for every parameter in one go, without disturbing
+# the global RNG state: set.seed() elsewhere in your model will behave the same
+# whether or not this function has been called. Columns are named
+# state.destination.parameter so each stream can be identified later.
+draw_uniforms <- function(n_draws, stream_names, seed) {
+  stopifnot(is.numeric(seed), length(seed) == 1)
+  has_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  old_seed <- if (has_seed) get(".Random.seed", envir = globalenv())
+  on.exit({
+    if (has_seed) {
+      assign(".Random.seed", old_seed, envir = globalenv())
+    } else {
+      rm(".Random.seed", envir = globalenv())
+    }
+  })
+  set.seed(seed)
+  matrix(
+    runif(n_draws * length(stream_names)),
+    nrow = n_draws,
+    dimnames = list(NULL, stream_names)
+  )
+}
+
 draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
-  # either give the seed or the rng, but not both
-  stopifnot(is.null(seed) || is.null(rng))
+  # give exactly one of the seed or the pre-drawn rng
+  stopifnot(xor(is.null(seed), is.null(rng)))
 
-  # number of parameters per destination within a state, and the column offset
-  # at which each block starts (0-based)
-  n_par <- function(state) lengths(lapply(state, `[[`, "coefs"))
-  offsets <- function(n) cumsum(c(0, n))[seq_along(n)]
+  # uniform draws named state.destination.parameter per parameter. The
+  # streams are looked up by name.
+  stream_names <- unlist(lapply(names(flexsurv_output), function(state_name) {
+    state <- flexsurv_output[[state_name]]
+    lapply(names(state), function(dest_name) {
+      paste(state_name, dest_name, names(state[[dest_name]]$coefs), sep = ".")
+    })
+  }))
 
-  n_per_state <- vapply(flexsurv_output, function(s) sum(n_par(s)), numeric(1))
-  n_total <- sum(n_per_state)
-
-  # either use pre-drawn values or draw them here after setting seed.
-  if (!is.null(rng)) {
-    stopifnot(is.matrix(rng))
-    stopifnot(nrow(rng) == n_draws)
-    stopifnot(ncol(rng) == n_total)
-  } else {
-    set.seed(seed)
-    rng <- matrix(runif(n_draws * n_total), nrow = n_draws)
+  if (is.null(rng)) {
+    rng <- draw_uniforms(n_draws, stream_names, seed)
   }
+  stopifnot(
+    is.matrix(rng),
+    nrow(rng) == n_draws,
+    all(stream_names %in% colnames(rng))
+  )
 
-  # cycle through states then destinations, each consuming the next block of
-  # columns in rng. This is the same as a nested for loop, but more efficient
-  # and less verbose. N.B., Map(f, list1, list2). Lists are flexsurv_output and
-  # offsets(n_per_state) for the outer loop, and state and the offset for the
-  # inner loop. Visually, it moves along the columns of rng in the right places
-  # for each set of transitions.
+  # cycle through states then destinations, pulling each destination's streams
+  # out of rng by name, drawing on the estimation scale, then transforming back.
   #
-  # The twist is that because R is column-major, we transpose the output!
-  Map(function(state, state_off) {
-    Map(function(dest, dest_off) {
-      cols <- dest_off + seq_along(dest$coefs)
+  # because R is column-major, we transpose the output.
+  # This code is the crux so take your time reading it.
+  Map(function(state, state_name) {
+    Map(function(dest, dest_name) {
+      cols <- paste(state_name, dest_name, names(dest$coefs), sep = ".")
       draws <- mvnorm_draws(
         rng[, cols, drop = FALSE],
         dest$coefs,
@@ -474,8 +504,8 @@ draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
         dist = dest$dist,
         params = t(flexsurv_inv_transform(draws, dest$dist))
       )
-    }, state, state_off + offsets(n_par(state)))
-  }, flexsurv_output, offsets(n_per_state))
+    }, state, names(state))
+  }, flexsurv_output, names(flexsurv_output))
 }
 
 # because of column-major (columns faster than rows) in R, for each PSA we pull
