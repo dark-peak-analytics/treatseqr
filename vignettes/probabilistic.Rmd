@@ -20,12 +20,17 @@ library(treatseqr)
 
 # Introduction
 
-This vignette uses the initial dataset from the vignette called
+This vignette uses the model structure from the vignette called
 `fixed-duration-tunnels.Rmd`, which you can see using
-`vignette("fixed-duration-tunnels", package = "treatseqr")`. It then generates
-random numbers which still follow "the rules" (i.e., summing to 1) en mass for
-use in a probabilistic sensitivity analysis (PSA). The PSA is then run and the
-`ggplot2` trace includes credible intervals (CrIs) for each trace.
+`vignette("fixed-duration-tunnels", package = "treatseqr")`. Rather than the
+fixed transition probabilities used there, the transitions are driven by
+parametric survival models (as they would be in practice), and the vignette
+shows how to draw their parameters so that the transition probabilities still
+follow "the rules" (i.e., summing to 1) en masse for use in a probabilistic
+sensitivity analysis (PSA). The PSA is then run and the `ggplot2` trace includes
+credible intervals (CrIs) for each state. Not every transition in the
+deterministic vignette is reproduced here (for example `on_trt -> palliative`
+is omitted) to keep the example focused.
 
 As with the `fixed-duration-tunnels.Rmd`, the five model states are:
 
@@ -71,7 +76,12 @@ this can considerably vary from model to model, it is outside the scope of the
 package and should be left up to you, the modeller. Usually in `R` there will
 be a way to do this, and we cover the most common approach (multivariate normal
 draws) below. The key is to make sure that the transition probabilities sum to 1
-and converge on the deterministic values you would use in a base-case analysis.
+and that the parameter draws are centred on the point estimates you use in the
+base-case analysis. Note that the *mean* of the PSA transition probabilities
+will not in general equal the base-case transition probabilities, because the
+transforms involved (`exp()`, `1 - exp(-H)`) are non-linear. That is expected:
+the base case is run at the point estimates, and the PSA characterises the
+uncertainty around it.
 
 For instance, if you are using Kaplan-Meier (KM) for first line, followed by external
 digitized KM data for subsequent lines (what we anticipate to be the most common
@@ -184,12 +194,11 @@ mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
 in-built functions for this already. (e.g. exponential hazard:
 `flexsurv::hexp()`, exponential cumulative hazard: `flexsurv::Hexp()`). You can
 use these to calculate transition probabilities for each model cycle that sum to
-1, and correspond to each other for the different states. Note that this often
-needs an "additive hazards" assumption, such that on the hazard scale
-transitions add up. Difference in cumulative hazard between two time points:
-
-Transitions add up. For each destination state $k$, the change in cumulative
-hazard over model cycle $t$ (i.e. the interval $[t-1, t)$) is:
+1, and correspond to each other for the different states. Note that this
+relies on an "additive hazards" (competing risks) assumption: on the hazard
+scale, the transitions out of a state add up. For each destination state $k$,
+the change in cumulative hazard over model cycle $t$ (i.e. the interval
+$[t-1, t)$) is:
 
 $$
 \Delta H_k(t) = H_k(t) - H_k(t-1)
@@ -202,8 +211,8 @@ $$
 p_{\text{exit}}(t) = 1 - \exp\left(-\sum_{j} \Delta H_j(t)\right)
 $$
 
-This is then shared between destinations in proportion to each one's cumulative
-hazard:
+This is then shared between destinations in proportion to each one's hazard
+increment over the cycle:
 
 $$
 p_k(t) = \frac{\Delta H_k(t)}{\sum_{j} \Delta H_j(t)} \, p_{\text{exit}}(t)
@@ -213,6 +222,25 @@ The probability of staying is $1 - p_{\text{exit}}(t)$, which `treatseqr`
 computes for you. Hazards add, probabilities do not: converting each destination
 separately as $1 - \exp(-\Delta H_k(t))$ and summing overstates the exits and
 can exceed 1.
+
+## Point about measuring time
+
+Evaluating $H_k(t)$ from $t = 0$ for every state, as we do below, is a
+*clock-reset* (semi-Markov) assumption. $t$ is time since entry into the current
+state, and the survival model for each transition must have been fitted on that
+time scale.
+
+If instead a transition's data are on the model-time clock (a *clock-forward*
+assumption), the tunnel position $d$ no longer tells you the time at which to
+evaluate $H_k$, and you would need to handle that transition differently.
+
+A consequence worth flagging is **background mortality**. Tunnel states know
+how long a patient has been in the state, but not the model time (and therefore
+not the patient's age). An age-dependent general-population mortality floor, of
+the kind usually expected in HTA submissions, cannot be applied inside a tunnel
+directly. Options include folding an average background hazard into each
+transition's `die` hazard, or applying the floor at the trace level afterwards;
+either way, you should document and justify the choice.
 
 
 ```{r time_units}
@@ -240,6 +268,7 @@ cum_haz_to_tps <- function(H_list) {
   dH <- diff(H_mat)
   total <- rowSums(dH)
   p_exit <- 1 - exp(-total)
+  # share p_exit between destinations in proportion to dH.
   dH * ifelse(total > 0, p_exit / total, 0)
 }
 
@@ -682,8 +711,7 @@ generate_cum_haz <- function(time_points, params) {
   })
 }
 time_points <- seq.int(0, th) * cl / tuota
-# finally, we arrive at the cumulative hazard for each trasision we have data
-# for:
+# cumulative hazard for each transition we have data for:
 cum_hazards <- generate_cum_haz(
   time_points = time_points,
   params = get_params_psa(prob_params, 1)
@@ -853,10 +881,11 @@ psa_output <- vapply(
 ```
 
 The above is your trace for all of the PSA iterations. You can use this to
-compute your cost-effectiveness outputs like this in one go, or can compute them
-on the iteration level by manipulating the function . This could dramatically
-reduce the amount of data coming out of the model (as the trace is the biggest
-object typically and for PSA you usually only need top-level outputs).
+compute your cost-effectiveness outputs in one go, or you can compute them at
+the iteration level by having `run_psa_iteration()` return costs and QALYs
+rather than the trace. The latter can dramatically reduce the amount of data
+coming out of the model: the trace is typically the biggest object, and for a
+PSA you usually only need the top-level outputs.
 
 Fully integrating the treatseqr engine into your model's PSA is up to you, but
 this example is likely to be very flexible and essentially applies to any model.
