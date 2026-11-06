@@ -308,12 +308,32 @@ For this example, we will emulate that with some of the more simple
 distributions (exponential and Weibull). Once you have selected the best fitting
 distributions for your base case and want to vary them in the PSA, you would
 organise the parameters in the same way structurally as the TP data in our
-deterministic examples:
+deterministic examples.
+
+### A note about scales
+
+`flexsurv` estimates its models on a *transformed* scale (for example
+`log(rate)`, `log(shape)`, `log(scale)`), and that is the scale which
+`coef(fit)` and `vcov(fit)` are produced. The multivariate normal is only
+appropriate on that same scale. Drawing `rate` or `shape` directly could give
+you the wrong numbers. So the structure below stores `coefs` and `vcov` exactly
+as `flexsurv` returns them, and the inverse transforms (which `flexsurv` exposes
+per distribution in `flexsurv::flexsurv.dists[[dist]]$inv.transforms`) are
+applied *after* the draw to recover the natural-scale parameters that the hazard
+functions expect. With a real fit, `coefs = coef(fit)` and `vcov = vcov(fit)` is
+all you need. Note also that the off-diagonal elements of `vcov` are rarely zero
+in practice (log-shape and log-scale of a Weibull are usually strongly
+correlated), so the Weibull examples below carry a non-zero covariance:
 
 ```{r stats_output}
-# small helper so every vcov includes parameter names:
-named_vcov <- function(x, nms) {
-  m <- matrix(x, nrow = length(nms), ncol = length(nms))
+# small helper so every vcov includes parameter names. x is the vector of
+# standard errors on the transformed scale, and rho the correlation (used for
+# the 2-parameter distributions only).
+named_vcov <- function(se, nms, rho = 0) {
+  stopifnot(length(se) == length(nms))
+  cor_mat <- matrix(rho, nrow = length(nms), ncol = length(nms))
+  diag(cor_mat) <- 1
+  m <- outer(se, se) * cor_mat
   dimnames(m) <- list(nms, nms)
   m
 }
@@ -322,61 +342,61 @@ flexsurv_output <- list(
   on_trt = list(
     surgery = list(
       dist = "exp",
-      params = c(rate = 0.05),
-      vcov = named_vcov(0.005^2, "rate")
+      coefs = c(rate = log(0.05)),
+      vcov = named_vcov(0.10, "rate")
     ),
     die = list(
       dist = "exp",
-      params = c(rate = 0.01),
-      vcov = named_vcov(0.002^2, "rate")
+      coefs = c(rate = log(0.01)),
+      vcov = named_vcov(0.20, "rate")
     )
   ),
   surgery = list(
     failed_surg = list(
       dist = "weibull",
-      params = c(shape = 1.5, scale = 3),
-      vcov = named_vcov(c(0.01, 0, 0, 0.01), c("shape", "scale"))
+      coefs = c(shape = log(1.5), scale = log(3)),
+      vcov = named_vcov(c(0.07, 0.07), c("shape", "scale"), rho = -0.3)
     ),
     responder = list(
       dist = "weibull",
-      params = c(shape = 1.2, scale = 5),
-      vcov = named_vcov(c(0.02, 0, 0, 0.02), c("shape", "scale"))
+      coefs = c(shape = log(1.2), scale = log(5)),
+      vcov = named_vcov(c(0.10, 0.10), c("shape", "scale"), rho = -0.3)
     ),
     die = list(
       dist = "exp",
-      params = c(rate = 0.05),
-      vcov = named_vcov(0.005^2, "rate")
+      coefs = c(rate = log(0.05)),
+      vcov = named_vcov(0.10, "rate")
     )
   ),
   responder = list(
     palliative = list(
       dist = "weibull",
-      params = c(shape = 1.1, scale = 7),
-      vcov = named_vcov(c(0.03, 0, 0, 0.03), c("shape", "scale"))
+      coefs = c(shape = log(1.1), scale = log(7)),
+      vcov = named_vcov(c(0.12, 0.12), c("shape", "scale"), rho = -0.3)
     ),
     die = list(
       dist = "exp",
-      params = c(rate = 0.01),
-      vcov = named_vcov(0.002^2, "rate")
+      coefs = c(rate = log(0.01)),
+      vcov = named_vcov(0.20, "rate")
     )
   ),
   failed_surg = list(
     palliative = list(
       dist = "weibull",
-      params = c(shape = 1.3, scale = 4),
-      vcov = named_vcov(c(0.02, 0, 0, 0.02), c("shape", "scale"))
+      coefs = c(shape = log(1.3), scale = log(4)),
+      vcov = named_vcov(c(0.10, 0.10), c("shape", "scale"), rho = -0.3)
     ),
     die = list(
       dist = "exp",
-      params = c(rate = 0.02),
-      vcov = named_vcov(0.003^2, "rate")
+      coefs = c(rate = log(0.02)),
+      vcov = named_vcov(0.15, "rate")
     )
   ),
   palliative = list(
     die = list(
       dist = "exp",
-      params = c(rate = 0.25),
-      vcov = named_vcov(0.01^2, "rate")
+      coefs = c(rate = log(0.25)),
+      vcov = named_vcov(0.04, "rate")
     )
   )
 )
@@ -396,13 +416,29 @@ from using a lot of memory from storing all transition probabilities for all
 iterations at once.
 
 ```{r draw_params}
+# Map the draws from flexsurv's estimation scale back to the natural scale
+# the H*() functions expect. flexsurv.dists records, per distribution, the
+# parameter names (in order) and the inverse transform for each one, so we
+# don't have to maintain a table of which parameters are logged.
+flexsurv_inv_transform <- function(draws, dist) {
+  dists <- flexsurv::flexsurv.dists
+  key <- match(tolower(dist), tolower(names(dists)))
+  stopifnot(!is.na(key))
+  dinfo <- dists[[key]]
+  stopifnot(identical(colnames(draws), dinfo$pars))
+  for (j in seq_along(dinfo$pars)) {
+    draws[, j] <- dinfo$inv.transforms[[j]](draws[, j])
+  }
+  draws
+}
+
 draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
   # either give the seed or the rng, but not both
   stopifnot(is.null(seed) || is.null(rng))
 
   # number of parameters per destination within a state, and the column offset
   # at which each block starts (0-based)
-  n_par <- function(state) lengths(lapply(state, `[[`, "params"))
+  n_par <- function(state) lengths(lapply(state, `[[`, "coefs"))
   offsets <- function(n) cumsum(c(0, n))[seq_along(n)]
 
   n_per_state <- vapply(flexsurv_output, function(s) sum(n_par(s)), numeric(1))
@@ -428,16 +464,15 @@ draw_params <- function(flexsurv_output, n_draws, rng = NULL, seed = NULL) {
   # The twist is that because R is column-major, we transpose the output!
   Map(function(state, state_off) {
     Map(function(dest, dest_off) {
-      cols <- dest_off + seq_along(dest$params)
+      cols <- dest_off + seq_along(dest$coefs)
+      draws <- mvnorm_draws(
+        rng[, cols, drop = FALSE],
+        dest$coefs,
+        vcov = dest$vcov
+      )
       list(
         dist = dest$dist,
-        params = t(
-          mvnorm_draws(
-            rng[, cols, drop = FALSE],
-            dest$params,
-            vcov = dest$vcov
-          )
-        )
+        params = t(flexsurv_inv_transform(draws, dest$dist))
       )
     }, state, state_off + offsets(n_par(state)))
   }, flexsurv_output, offsets(n_per_state))
@@ -453,6 +488,11 @@ prob_params <- draw_params(
   seed = 12345
 )
 str(prob_params)
+
+# The draws are now on the natural scale, so rates and shapes are strictly
+# positive even in the tails:
+range(prob_params$on_trt$die$params)
+range(prob_params$surgery$failed_surg$params["shape", ])
 ```
 
 Now we have parametric survival modelling parameters for every state, in the
