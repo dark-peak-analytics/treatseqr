@@ -695,14 +695,6 @@ for this PSA iteration. This means we can start to connect everything up!
 
 
 ```{r psa_setup_full}
-n_cycles <- c(
-  on_trt = th,
-  responder = th,
-  surgery = 3L,
-  failed_surg = 2L,
-  palliative = th
-)
-
 # make sure the states are ordered in the right way
 state_names <- c(
   "on_trt",
@@ -712,6 +704,15 @@ state_names <- c(
   "palliative",
   "die"
 )
+
+# number of cycles of TPs per state:
+# - th for pre-tunnel states
+# - tunnel lengths, in the same order as state_names (death excluded).
+n_cycles <- setNames(
+  c(rep(th, m_spec$pre_tunnels), m_spec$tunnel_lengths),
+  head(state_names, -1)
+)
+n_cycles
 
 # Turn one iteration's cumulative hazards (and node splits) into a tp_source
 # list in the order treatseqr expects.
@@ -751,10 +752,10 @@ tp_source_i <- build_tp_source(
   state_names
 )
 
-# validate the TPs:
+# validate using generate_m_list()
 valid_tp_i <- validate_tp_source(
   tp_source_i,
-  tunnel_lengths = c(3L, 2L, th, th)
+  tunnel_lengths = m_spec$tunnel_lengths
 )
 
 # the surgery tunnel has p_stay = 0 at d = 3 (the decision node), and the
@@ -796,7 +797,6 @@ run_psa_iteration <- function(
   node_params,
   n_cycles,
   state_names,
-  th,
   iter,
   m_spec
 ) {
@@ -808,11 +808,8 @@ run_psa_iteration <- function(
     state_names
   )
 
-  valid_tp_i <- validate_tp_source(
-    tp_source_i,
-    tunnel_lengths = c(3L, 2L, th, th)
-  )
-  m_i <- generate_m_list(m_spec, valid_tp_i, state_names = state_names)
+  # generate_m_list() validates tp_source_i before building the matrices
+  m_i <- generate_m_list(m_spec, tp_source_i, state_names = state_names)
   trace_i <- extrapolate_treatseqr(m = m_i, spec = m_spec)
   consolidate_treatseqr_trace(
     trace_i,
@@ -829,7 +826,6 @@ head(run_psa_iteration(
   node_params,
   n_cycles,
   state_names,
-  th,
   iter = 1,
   m_spec
 )$t, 2)
@@ -844,7 +840,6 @@ psa_output <- vapply(
       node_params,
       n_cycles,
       state_names,
-      th,
       iter,
       m_spec
     )$t
