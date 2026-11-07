@@ -2,33 +2,34 @@
 % Please edit documentation in R/psa_utils.R
 \name{draw_uniforms}
 \alias{draw_uniforms}
-\title{Draw named uniform random-number streams without disturbing the global RNG}
+\title{Draw named uniform random-number streams whilst preserving RNG stream}
 \usage{
 draw_uniforms(n_draws, stream_names, seed)
 }
 \arguments{
-\item{n_draws}{Integer. Number of PSA iterations (rows).}
+\item{n_draws}{Integer. PSA iterations (rows).}
 
-\item{stream_names}{Character. rng stream id (origin.destination.parameter).}
+\item{stream_names}{Character. RNG id (origin.destination.parameter).}
 
 \item{seed}{Integer seed passed to \code{set.seed()} inside the local scope.}
 }
 \value{
-A numeric matrix with \code{n_draws} rows and
+numeric matrix with \code{n_draws} rows and
 \code{length(stream_names)} named columns of values in (0, 1).
 }
 \description{
-Draws an \code{n_draws x length(stream_names)} matrix of \code{runif()}
-values, one named column ("stream") per parameter that will be sampled in
-the PSA. The draw happens inside a local RNG scope: \code{.Random.seed} is
-restored on exit, so \code{set.seed()} calls elsewhere in your model behave
-identically whether or not this function has run.
+Draws \code{n_draws x length(stream_names)} \code{runif()} values. One named
+column per parameter that will be sampled in the PSA with a unique id. Draws
+happen inside a local RNG scope: \code{.Random.seed} is restored on exit, so
+\code{set.seed()} calls elsewhere in your model behave identically whether or
+not this function has run. Thus, preserving the RNG stream.
 }
 \details{
 Naming the streams (for example \code{"surgery.die.rate"}) and looking them
 up by name rather than by column position means that adding or re-ordering
 a transition later does not shift the random numbers feeding every other
-transition, which preserves common random numbers between scenarios.
+transition, which preserves common random numbers between scenarios. This is
+really useful when debugging your model.
 }
 \examples{
 rng <- draw_uniforms(

@@ -7,62 +7,48 @@
 specify_psa(surv, m_spec, state_names, th, tuota, cl)
 }
 \arguments{
-\item{surv}{Named list, one element per (transient) state that has at least
-one survival-powered transition, in the same \code{state -> destination}
-structure as a deterministic \code{tp_source}. Each destination is either
+\item{surv}{Named list, one element per state that has at least
+one survival-powered transition, in the same structure as a deterministic
+\code{tp_source}. Destinations are:
 \itemize{
-\item a fitted \code{flexsurv::flexsurvreg} object with no covariates,
-from which the distribution, coefficients and variance-covariance
-matrix are taken; or
-\item a list with elements \code{dist} (a \code{flexsurv} distribution
-name), \code{coefs} (named numeric vector on \code{flexsurv}'s
-estimation scale, i.e. what \code{coef(fit)} returns) and \code{vcov}
-(variance-covariance matrix on the same scale with dimnames matching
-\code{names(coefs)}, i.e. what \code{vcov(fit)} returns).
+\item a fitted \code{flexsurv::flexsurvreg} object with no covariates.
+\item a list with elements \code{dist}, \code{coefs}, and \code{vcov}.
 }
-May be \code{NULL} if every transition will be injected.}
+May be \code{NULL} if every transition is injected directly.}
 
 \item{m_spec}{Model specification from \code{\link{specify_m}}.}
 
-\item{state_names}{Character vector of all state names in matrix order,
-with the absorbing (death) state last, as passed to
-\code{\link{generate_m_list}}.}
+\item{state_names}{Character vector of all state names in the right order,
+with the absorbing (death) state last.}
 
-\item{th}{Integer time horizon in model cycles (number of cycles of
-transition probabilities for the pre-tunnel states).}
+\item{th}{Integer time horizon in model cycles.}
 
-\item{tuota}{Time unit of the survival analysis, in years (e.g.
-\code{30.44 / 365.25} for months).}
+\item{tuota}{Time unit of the survival analysis, in years.}
 
-\item{cl}{Cycle length of the model, in years (e.g. \code{7 / 365.25} for
-weeks).}
+\item{cl}{Cycle length of the model, in years.}
 }
 \value{
-An object of class \code{treatseqr_psa_spec}: a list with elements
-\code{surv} (normalised survival specifications, each
-\code{list(dist, coefs, vcov)}), \code{state_names}, \code{death_name},
-\code{n_cycles} (named integer vector: cycles of TPs each transient state
-needs), \code{th}, \code{tuota}, \code{cl} and \code{stream_names} (the
-uniform random-number streams the survival draws will consume, named
-\code{state.destination.parameter}).
+A \code{treatseqr_psa_spec} object. List with elements \code{surv},
+\code{state_names}, \code{death_name}, \code{n_cycles}, \code{th},
+\code{tuota}, \code{cl} and \code{stream_names}.
 }
 \description{
-Validates the model structure and the survival models that will power the
-transition probabilities in a PSA, and returns a specification object for
-\code{\link{draw_psa}}. Any transitions not covered by a survival model are
+Validates the model structure. Returns a specification object for
+\code{\link{draw_psa}}. Transitions not covered by a survival model are
 expected to be injected as pre-drawn probabilities via the \code{tp_draws}
 argument of \code{\link{draw_psa}}.
 }
 \details{
-Survival models are evaluated on a clock-reset basis: the cumulative hazard
-for a transition out of state \eqn{s} is evaluated at time since entry into
-\eqn{s}, which is what tunnel states represent. The survival model for each
-transition must therefore have been fitted on that time scale, and must be
-specific to that transition (censoring all other exits).
+Clock-reset assumption is used throughout. Cumulative hazards for a
+transition out of state \eqn{s} are evaluated at time since entry. The
+survival model for each transition must therefore have been fitted on the
+same time scale, and must censor for other destinations out of \eqn{s}.
 
-Fits with covariates are rejected: evaluate the model for the population of
-interest first (e.g. with \code{flexsurv::normboot.flexsurvreg} or by
-re-fitting on the subgroup) and pass \code{dist}/\code{coefs}/\code{vcov}.
+Covariates are not supported. You could potentially pre-evaluate the model
+for the population of interest first using bootstrapping, for instance
+\code{flexsurv::normboot.flexsurvreg} and then passing in
+\code{dist}/\code{coefs}/\code{vcov} instead of the \code{flexsurvreg}
+object.
 }
 \examples{
 \dontshow{if (requireNamespace("flexsurv", quietly = TRUE)) withAutoprint(\{ # examplesIf}
@@ -77,21 +63,31 @@ named_vcov <- function(se, nms, rho = 0) {
 spec <- specify_psa(
   surv = list(
     on_trt = list(
-      surgery = list(dist = "exp", coefs = c(rate = log(0.05)),
-                     vcov = named_vcov(0.1, "rate")),
-      die = list(dist = "exp", coefs = c(rate = log(0.01)),
-                 vcov = named_vcov(0.2, "rate"))
+      surgery = list(
+        dist = "exp", coefs = c(rate = log(0.05)),
+        vcov = named_vcov(0.1, "rate")
+      ),
+      die = list(
+        dist = "exp", coefs = c(rate = log(0.01)),
+        vcov = named_vcov(0.2, "rate")
+      )
     ),
     surgery = list(
-      responder = list(dist = "weibull",
-                       coefs = c(shape = log(1.2), scale = log(5)),
-                       vcov = named_vcov(c(0.1, 0.1), c("shape", "scale"), -0.3)),
-      die = list(dist = "exp", coefs = c(rate = log(0.05)),
-                 vcov = named_vcov(0.1, "rate"))
+      responder = list(
+        dist = "weibull",
+        coefs = c(shape = log(1.2), scale = log(5)),
+        vcov = named_vcov(c(0.1, 0.1), c("shape", "scale"), -0.3)
+      ),
+      die = list(
+        dist = "exp", coefs = c(rate = log(0.05)),
+        vcov = named_vcov(0.1, "rate")
+      )
     ),
     responder = list(
-      die = list(dist = "exp", coefs = c(rate = log(0.01)),
-                 vcov = named_vcov(0.2, "rate"))
+      die = list(
+        dist = "exp", coefs = c(rate = log(0.01)),
+        vcov = named_vcov(0.2, "rate")
+      )
     )
   ),
   m_spec = m_spec, state_names = state_names, th = th,
