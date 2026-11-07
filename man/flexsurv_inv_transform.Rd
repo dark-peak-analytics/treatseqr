@@ -7,10 +7,9 @@
 flexsurv_inv_transform(draws, dist)
 }
 \arguments{
-\item{draws}{Numeric matrix of parameter draws on the estimation scale, one
-row per PSA iteration. Column names must equal the distribution's
-parameter names in \code{flexsurv}'s order (as returned by
-\code{names(coef(fit))}).}
+\item{draws}{Numeric matrix of parameter draws, one row per PSA iteration.
+Column names must equal the distribution's parameter names in
+\code{flexsurv}'s order (as returned by \code{names(coef(fit))}).}
 
 \item{dist}{Distribution name (see \code{\link{flexsurv_cum_haz}}).}
 }
@@ -18,12 +17,14 @@ parameter names in \code{flexsurv}'s order (as returned by
 \code{draws} with each column mapped to the natural scale.
 }
 \description{
-\code{flexsurv} estimates on a transformed scale (for example
-\code{log(rate)}, \code{log(shape)}, \code{log(scale)}), and that is the
-scale on which \code{coef()} and \code{vcov()} are reported and on which a
-multivariate normal draw is appropriate. This function applies the
-distribution's inverse transforms column by column so the result can be
-passed to the hazard functions, which expect natural-scale parameters.
+\code{flexsurv} produces transformed vcovs (for example \code{log(rate)},
+\code{log(shape)}, \code{log(scale)}), so mvnorm draws reflect that. This
+function applies the distribution's inverse transforms column by column,
+which then respects the scale of the estimation from \code{flexsurv}. when
+providing \code{flexsurvreg} results that you have pulled out yourself, be
+very careful that you provide them as they come out of the package, and don't
+tranform them yourself. It is simpler to use the \code{flexsurvreg} objects
+themselves if you are in doubt, which will bypass the use of this function.
 }
 \examples{
 \dontshow{if (requireNamespace("flexsurv", quietly = TRUE)) withAutoprint(\{ # examplesIf}

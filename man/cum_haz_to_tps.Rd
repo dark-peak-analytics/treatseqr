@@ -7,14 +7,13 @@
 cum_haz_to_tps(H_list)
 }
 \arguments{
-\item{H_list}{Named list with one element per destination. Each element is
-a numeric vector of cumulative hazards of length \code{n + 1}, evaluated at
-the cycle boundaries starting from \eqn{t = 0} (where \eqn{H = 0}).}
+\item{H_list}{Named list with one element per destination. Each element is a
+numeric vector of cumulative hazards of length \code{n + 1}, evaluated each
+cycle starting from \eqn{t = 0} (where \eqn{H = 0}).}
 }
 \value{
 Numeric \code{n x K} matrix of transition probabilities: one row per
-cycle, one named column per destination. Row sums are the probability of
-leaving the state in that cycle.
+cycle, one named column per destination. Row sums are exit probabilities.
 }
 \description{
 Takes the cumulative hazard \eqn{H_k(t)} for each destination \eqn{k},
@@ -22,18 +21,15 @@ evaluated at the cycle boundaries \eqn{t = 0, 1, \dots, n}, and returns the
 per-cycle probability of moving to each destination.
 }
 \details{
-Hazards add, probabilities do not. For each cycle the increments
-\eqn{\Delta H_k} are summed across destinations to give the total hazard,
-the probability of leaving the state is \eqn{1 - \exp(-\sum_k \Delta H_k)},
-and that is shared between destinations in proportion to their increments.
-Converting each destination separately as \eqn{1 - \exp(-\Delta H_k)} and
-summing would overstate the exits and can exceed 1. The conversion is exact
-when the hazards are proportional within a cycle, and a very close
-approximation otherwise.
+For each cycle the \eqn{\Delta H_k} are summed across destinations to give
+the total hazard. Exit probability is \eqn{1 - \exp(-\sum_k \Delta H_k)}, and
+that is shared between destinations in proportion to their increments.
+Converting each destination via \eqn{1 - \exp(-\Delta H_k)} and summing is
+wrong. Conversion is exact when the hazards are proportional within a cycle,
+and a very close approximation otherwise.
 
-The probability of staying (\eqn{1 - p_{exit}}) is not returned:
-\code{treatseqr} computes it as the complement when it builds the
-transition matrices.
+\code{p_stay} (\eqn{1 - p_{exit}}) is not returned. \code{treatseqr} computes
+it as the complement when it builds the transition matrices.
 }
 \examples{
 # exponential hazard, rate 0.1 per time unit, 5 cycles of length 1

@@ -9,7 +9,7 @@ draw_uniforms(n_draws, stream_names, seed)
 \arguments{
 \item{n_draws}{Integer. Number of PSA iterations (rows).}
 
-\item{stream_names}{Character vector of unique stream names (columns).}
+\item{stream_names}{Character. rng stream id (origin.destination.parameter).}
 
 \item{seed}{Integer seed passed to \code{set.seed()} inside the local scope.}
 }
@@ -31,7 +31,11 @@ a transition later does not shift the random numbers feeding every other
 transition, which preserves common random numbers between scenarios.
 }
 \examples{
-rng <- draw_uniforms(5, c("on_trt.die.rate", "on_trt.surgery.rate"), seed = 1)
+rng <- draw_uniforms(
+  5,
+  c("on_trt.die.rate", "on_trt.surgery.rate"),
+  seed = 1
+)
 dim(rng)
 colnames(rng)
 }
