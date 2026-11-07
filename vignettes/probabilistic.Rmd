@@ -984,5 +984,112 @@ is a useful plot to produce routinely: a base case that sits near the edge of
 (or outside) the credible interval usually indicates a problem with the
 parameter draws, such as drawing on the wrong scale.
 
+# The same PSA with the package functions
+
+Everything above was written by hand so that each step is visible. However, we
+hvae wrapped this process up into some functions to make it a bit easier.
+`treatseqr` functions also provide some bookkeeping and validation of what's
+being produced (parameter scales, inverse transforms, named random-number
+streams, merging injected rows, structural validation). This includes:
+
+1. `specify_psa()` takes the survival models in exactly the structure we already
+   built (`flexsurv_output`), plus the model structure, and validates
+everything. Each destination can be a `flexsurvreg` fit instead of a `list(dist,
+coefs, vcov)`, in which case the coefficients and variance-covariance matrix are
+taken from the fit.
+2. `draw_psa()` draws the model parameters for all PSA iterations. Anything that
+   is *not* a survival model is drawn **by you** and passed in as `tp_draws`.
+Note that `NA` makes the survival models cover that cycle for flexibility.
+`tp_point` includes the deterministic values of the same cells for the base
+case.
+3. `tp_source_psa()` returns the transition probability list for one iteration
+   (or the base case with `iter = NULL`), ready for `generate_m_list()`.
+
+```{r pkg_specify}
+psa_spec <- specify_psa(
+  surv = flexsurv_output,
+  m_spec = m_spec,
+  state_names = state_names,
+  th = th,
+  tuota = tuota,
+  cl = cl
+)
+psa_spec
+```
+
+The node is the one piece we still draw ourselves. Using the exported
+`draw_uniforms()` and `dirichlet_draws()` with the same stream names and seed
+as before gives exactly the same draws as `draw_nodes()` did. The matrices are
+`n_cycles x n_draws`, with `NA` in cycles 1 and 2 so those rows come from the
+survival models:
+
+```{r pkg_node}
+alpha <- node_output$surgery
+node_rng <- draw_uniforms(
+  n_psa,
+  paste("surgery.node", names(alpha), sep = "."),
+  seed = 54321
+)
+node_draws <- dirichlet_draws(node_rng, alpha)
+
+surgery_tp_draws <- lapply(setNames(names(alpha), names(alpha)), function(k) {
+  rbind(matrix(NA_real_, nrow = 2, ncol = n_psa), node_draws[, k])
+})
+surgery_tp_point <- lapply(setNames(names(alpha), names(alpha)), function(k) {
+  c(NA, NA, unname(alpha[[k]] / sum(alpha)))
+})
+```
+
+Now draw everything. `draw_psa()` tells you which cycles of which states are
+injected, and would have warned us had we left `surgery` to end in a holding
+state powered by a Weibull:
+
+```{r pkg_draw}
+psa_draws <- draw_psa(
+  psa_spec,
+  n_draws = n_psa,
+  seed = 12345,
+  tp_draws = list(surgery = surgery_tp_draws),
+  tp_point = list(surgery = surgery_tp_point)
+)
+psa_draws
+```
+
+The per-iteration function collapses to the deterministic pipeline with one
+extra line at the top:
+
+```{r pkg_run}
+run_psa_iteration_pkg <- function(psa_draws, iter) {
+  tp_i <- tp_source_psa(psa_draws, iter)
+  m_i <- generate_m_list(m_spec, tp_i, state_names = state_names)
+  trace_i <- extrapolate_treatseqr(m = m_i, spec = m_spec)
+  consolidate_treatseqr_trace(trace_i, m_spec, state_names)
+}
+
+psa_output_pkg <- vapply(
+  seq_len(n_psa),
+  function(iter) run_psa_iteration_pkg(psa_draws, iter)$t,
+  matrix(NA_real_, nrow = th + 1, ncol = length(state_names))
+)
+```
+
+Because the stream names, seeds, hazard functions and node overwrite are the
+same, the result is not just close to the hand-rolled version but identical,
+and so is the base case:
+
+```{r pkg_check}
+identical(psa_output_pkg, psa_output)
+identical(tp_source_psa(psa_draws), tp_source_bc)
+```
+
+## Word of caution
+
+You must:
+
+- choose and fit the survival models 
+- Censor correctly for each transition
+- Decide whether each fixed-duration tunnel ends in a decision node or a holding state
+- Draw anything that is not a survival model yourself
+
 Fully integrating the treatseqr engine into your model's PSA is up to you, but
 this example is likely to be very flexible and essentially applies to any model.
