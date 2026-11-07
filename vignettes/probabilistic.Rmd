@@ -722,7 +722,7 @@ Now that we have the cumulative hazards, we can get the transition probabilities
 for this PSA iteration. This means we can start to connect everything up!
 
 
-```{r psa_setup_full}
+```{r psa_setup_full, fig.width = 7, fig.height = 5}
 # make sure the states are ordered in the right way
 state_names <- c(
   "on_trt",
@@ -801,13 +801,27 @@ mlist <- generate_m_list(
 # extrapolate trace
 trace <- extrapolate_treatseqr(m = mlist, spec = m_spec)
 consol <- treatseqr::consolidate_treatseqr_trace(trace, m_spec, state_names)
-matplot(
-  consol[["t"]][, setdiff(state_names, "die")],
+# a quick look at this single iteration's trace (alive states only). The
+# proper summary across all iterations is plotted at the end of the vignette.
+alive_states <- setdiff(state_names, "die")
+graphics::matplot(
+  consol[["t"]][, alive_states],
   type = "l",
   lty = 1,
-  col = seq_along(state_names),
+  col = seq_along(alive_states),
   xlab = "Cycle",
-  ylab = "Proportion of cohort"
+  ylab = "Proportion of cohort",
+  main = sprintf(
+    "Trace for PSA iteration %d (survival-driven TPs, alive states)",
+    psa_iteration
+  )
+)
+graphics::legend(
+  "topright",
+  legend = alive_states,
+  col = seq_along(alive_states),
+  lty = 1,
+  cex = 0.8
 )
 ```
 
