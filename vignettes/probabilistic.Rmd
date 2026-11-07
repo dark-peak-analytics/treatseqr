@@ -962,19 +962,20 @@ ggplot2::ggplot(trace_summary, ggplot2::aes(x = cycle)) +
     alpha = 0.25
   ) +
   ggplot2::geom_line(ggplot2::aes(y = median, colour = state)) +
+  # group = state. base case is one dashed line per state
   ggplot2::geom_line(
-    ggplot2::aes(y = base_case),
+    ggplot2::aes(y = base_case, group = state),
     colour = "black",
     linetype = "dashed"
   ) +
-  ggplot2::facet_wrap(~state, scales = "free_y") +
   ggplot2::labs(
     x = "Cycle",
     y = "Proportion of cohort",
+    colour = "State",
+    fill = "State",
     title = "PSA trace: median and 95% CrI (dashed = base case)"
   ) +
-  ggplot2::theme_minimal() +
-  ggplot2::theme(legend.position = "none")
+  ggplot2::theme_minimal()
 ```
 
 The base case sits inside the credible interval but, as noted earlier, is not
