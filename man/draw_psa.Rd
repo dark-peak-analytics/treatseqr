@@ -18,37 +18,31 @@ draw_psa(
 
 \item{n_draws}{Integer. Number of PSA iterations.}
 
-\item{seed}{Integer seed for \code{\link{draw_uniforms}}. Provide exactly
-one of \code{seed} or \code{rng} when the specification has survival
-models; neither when it does not.}
+\item{seed}{Integer seed for \code{\link{draw_uniforms}}. Provide one of
+\code{seed} or \code{rng} when the specification includes survival models or
+neither when it does not.}
 
 \item{rng}{Optional pre-drawn matrix of uniform streams (see
 \code{\link{draw_uniforms}}) with \code{n_draws} rows and at least the
-columns named in \code{spec$stream_names}. Supplying it lets you keep one
-set of streams across scenarios (common random numbers).}
+columns named in \code{spec$stream_names}. Supplying it lets you keep one set
+of streams across scenarios (common random numbers).}
 
 \item{tp_draws}{Optional list of pre-drawn transition probabilities to
-inject, in the usual \code{state -> destination} structure. Each
+inject, in the same list structure as the rest of the package. Each
 destination is an \code{n_cycles[state] x n_draws} numeric matrix of
 probabilities (one column per iteration). Use \code{NA} for cycles that
-should come from the survival models instead. See Details for how rows
-are merged.}
+should come from the survival models instead. See Details for how rows are
+merged.}
 
-\item{tp_point}{Required when \code{tp_draws} is given: the deterministic
-(base-case) values of the injected probabilities, in the same
-\code{state -> destination} structure with one numeric vector of length
-\code{n_cycles[state]} per destination. \code{NA} must appear in exactly
-the same cycles as in \code{tp_draws}.}
+\item{tp_point}{Required when \code{tp_draws} is given. Deterministic values
+of the injected probabilities, in the same list structure with one numeric
+vector of length \code{n_cycles[state]} per destination. \code{NA} must
+appear in exactly the same cycles as in \code{tp_draws}.}
 }
 \value{
 An object of class \code{treatseqr_psa_draws}: a list with
-\code{spec}, \code{n_draws}, \code{rng} (the uniform streams used, for
-auditing or re-use), \code{params} (per survival-powered transition, a
-\code{list(dist, params)} where \code{params} is a
-\code{n_parameters x n_draws} natural-scale matrix), \code{tp_draws} and
-\code{tp_point} (validated, with \code{NA}s in injected rows replaced by
-0) and \code{injected_rows} (per state, a logical vector marking which
-cycles are injected).
+\code{spec}, \code{n_draws}, \code{rng}, \code{params}, \code{tp_draws} and
+\code{tp_point} and \code{injected_rows}.
 }
 \description{
 Draws the survival-model parameters described in a
@@ -58,23 +52,23 @@ returns everything \code{\link{tp_source_psa}} needs to build the
 transition probability list for a given iteration.
 }
 \details{
-\strong{Merge rule.} Rows (cycles) are the unit: within one row a state's
-exit probabilities form a single probability vector, so hazards and
-injected probabilities cannot be mixed within it. For each state and cycle,
-if \emph{any} destination in \code{tp_draws} has a non-\code{NA} value, the
-whole row is taken from \code{tp_draws} and any destination left as
-\code{NA} in that row becomes 0. Otherwise the row comes from the survival
-models. Every cycle of every transient state must be covered by one or the
-other.
+Within one row, a state's exit probabilities form a single probability
+vector. Hazards and injected probabilities cannot be mixed within it. For
+each state and cycle, if \emph{any} destination in \code{tp_draws} has a
+non-\code{NA} value, the whole row is taken from \code{tp_draws} and any
+destination left as \code{NA} in that row becomes 0. Otherwise the row comes
+from the survival models. Every cycle of every transient state must be
+covered by one or the other.
 
-\strong{Holding states.} A fixed-duration tunnel whose final cycle is
+For holding states, a fixed-duration tunnel whose final cycle is
 survival-powered re-applies that cycle's hazard increment indefinitely to
-anyone still in the tunnel (see
-\code{vignette("fixed-duration-tunnels", package = "treatseqr")}). If that
-increment comes from a non-exponential distribution a warning is issued: the
-frozen increment is unlikely to be what you intend. Either use
-\code{dist = "exp"} for those transitions, or inject a decision node for the
-final cycle (e.g. with \code{\link{draw_tp_node}}).
+anyone still in the tunnel (see \code{vignette("fixed-duration-tunnels",
+package = "treatseqr")}). If that increment comes from a non-exponential
+distribution a warning is issued: the frozen increment is unlikely to be what
+you intend. Either use \code{dist = "exp"} for those transitions, or inject a
+decision node for the final cycle via \code{tp_draws}: a Dirichlet row from
+\code{\link{dirichlet_draws}} with \code{NA} in every earlier cycle, as
+shown in \code{vignette("probabilistic", package = "treatseqr")}.
 }
 \examples{
 \dontshow{if (requireNamespace("flexsurv", quietly = TRUE)) withAutoprint(\{ # examplesIf}

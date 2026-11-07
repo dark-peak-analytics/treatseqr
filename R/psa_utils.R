@@ -1,7 +1,7 @@
 # Low-level utilities for probabilistic sensitivity analysis (PSA).
 #
-# These are the building blocks that `specify_psa()`, `draw_psa()` and the
-# `draw_tp_*()` helpers are built from. They are exported because modellers
+# These are the building blocks that `specify_psa()`, `draw_psa()` and
+# `tp_source_psa()` are built from. They are exported because modellers
 # who draw their own transition probabilities (and inject them via the
 # `tp_draws` argument of `draw_psa()`) will usually want the same pieces.
 # These include named uniform streams, multivariate-normal and Dirichlet draws,

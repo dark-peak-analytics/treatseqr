@@ -55,7 +55,9 @@
 #' package = "treatseqr")}). If that increment comes from a non-exponential
 #' distribution a warning is issued: the frozen increment is unlikely to be what
 #' you intend. Either use \code{dist = "exp"} for those transitions, or inject a
-#' decision node for the final cycle (e.g. with \code{\link{draw_tp_node}}).
+#' decision node for the final cycle via \code{tp_draws}: a Dirichlet row from
+#' \code{\link{dirichlet_draws}} with \code{NA} in every earlier cycle, as
+#' shown in \code{vignette("probabilistic", package = "treatseqr")}.
 #'
 #' @seealso \code{\link{specify_psa}}, \code{\link{tp_source_psa}},
 #'   \code{\link{draw_uniforms}}
@@ -295,7 +297,8 @@ draw_psa <- function(
             "is a holding state powered by non-exponential survival model(s) ",
             "(%s). The cycle-%d hazard increment will be re-applied indefinitely ",
             "to anyone remaining. Use dist = \"exp\" for these transitions, or ",
-            "inject a decision node for cycle %d (see ?draw_tp_node)."
+            "inject a decision node for cycle %d via tp_draws (a dirichlet_draws() ",
+            "row with NA in earlier cycles; see vignette(\"probabilistic\"))."
           ),
           state, n,
           paste(sprintf("%s [%s]", non_exp, dists[non_exp]), collapse = ", "),
