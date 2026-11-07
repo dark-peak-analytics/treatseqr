@@ -3,33 +3,34 @@
 # These are the building blocks that `specify_psa()`, `draw_psa()` and the
 # `draw_tp_*()` helpers are built from. They are exported because modellers
 # who draw their own transition probabilities (and inject them via the
-# `tp_draws` argument of `draw_psa()`) will usually want the same pieces:
-# named uniform streams, multivariate-normal and Dirichlet draws, and the
-# competing-risks conversion from cumulative hazards to transition
+# `tp_draws` argument of `draw_psa()`) will usually want the same pieces.
+# These include named uniform streams, multivariate-normal and Dirichlet draws,
+# and the competing-risks conversion from cumulative hazards to transition
 # probabilities.
 #
 # See `vignette("probabilistic", package = "treatseqr")` for the reasoning
 # behind each of these.
 
-#' Draw named uniform random-number streams without disturbing the global RNG
+#' Draw named uniform random-number streams whilst preserving RNG stream
 #'
-#' Draws an \code{n_draws x length(stream_names)} matrix of \code{runif()}
-#' values, one named column ("stream") per parameter that will be sampled in
-#' the PSA. The draw happens inside a local RNG scope: \code{.Random.seed} is
-#' restored on exit, so \code{set.seed()} calls elsewhere in your model behave
-#' identically whether or not this function has run.
+#' Draws \code{n_draws x length(stream_names)} \code{runif()} values. One named
+#' column per parameter that will be sampled in the PSA with a unique id. Draws
+#' happen inside a local RNG scope: \code{.Random.seed} is restored on exit, so
+#' \code{set.seed()} calls elsewhere in your model behave identically whether or
+#' not this function has run. Thus, preserving the RNG stream.
 #'
 #' Naming the streams (for example \code{"surgery.die.rate"}) and looking them
 #' up by name rather than by column position means that adding or re-ordering
 #' a transition later does not shift the random numbers feeding every other
-#' transition, which preserves common random numbers between scenarios.
+#' transition, which preserves common random numbers between scenarios. This is
+#' really useful when debugging your model.
 #'
-#' @param n_draws Integer. Number of PSA iterations (rows).
-#' @param stream_names Character. rng stream id (origin.destination.parameter).
+#' @param n_draws Integer. PSA iterations (rows).
+#' @param stream_names Character. RNG id (origin.destination.parameter).
 #' @param seed Integer seed passed to \code{set.seed()} inside the local scope.
 #'
-#' @return A numeric matrix with \code{n_draws} rows and
-#'   \code{length(stream_names)} named columns of values in (0, 1).
+#' @return numeric matrix with \code{n_draws} rows and
+#' \code{length(stream_names)} named columns of values in (0, 1).
 #' @importFrom stats runif
 #' @export
 #'
@@ -322,7 +323,13 @@ flexsurv_dist_info <- function(dist) {
   )
   dists <- flexsurv::flexsurv.dists
   key <- tolower(dist)
-  if (key == "exponential") key <- "exp"
+  # flexsurv.dists lists "exponential" and "lognormal" as aliases, but the
+  # H*() functions only exist under the short names
+  key <- switch(key,
+    exponential = "exp",
+    lognormal = "lnorm",
+    key
+  )
   idx <- match(key, tolower(names(dists)))
   assertthat::assert_that(
     !is.na(idx),
@@ -332,9 +339,9 @@ flexsurv_dist_info <- function(dist) {
       paste(names(dists), collapse = ", ")
     )
   )
-  info <- dists[[idx]]
-  info$name <- names(dists)[idx]
-  info
+  out <- dists[[idx]]
+  out$name <- names(dists)[idx]
+  out
 }
 
 

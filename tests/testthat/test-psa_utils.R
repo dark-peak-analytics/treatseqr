@@ -167,6 +167,8 @@ test_that("flexsurv_dist_info is case-insensitive and accepts 'exponential'", {
   skip_if_not_installed("flexsurv")
   expect_identical(treatseqr:::flexsurv_dist_info("WeibullPH")$name, "weibullPH")
   expect_identical(treatseqr:::flexsurv_dist_info("exponential")$name, "exp")
+  expect_identical(treatseqr:::flexsurv_dist_info("lognormal")$name, "lnorm")
+  expect_identical(flexsurv_cum_haz("lognormal"), flexsurv::Hlnorm)
   expect_identical(treatseqr:::flexsurv_dist_info("weibull")$pars, c("shape", "scale"))
   expect_error(treatseqr:::flexsurv_dist_info("notadist"), "Unsupported distribution")
 })
