@@ -1141,3 +1141,20 @@ You must:
 
 Fully integrating the `treatseqr` engine into your model's PSA is up to you, but
 this example is likely to be very flexible and essentially applies to any model.
+
+## Footnote about building models
+
+One additional point to tag onto the above is that the computationally intense
+part of the sequencing modelling exercise is the extrapolation of state
+residency itself. We would recommend doing this in isolation to the rest of the
+cost-effectiveness modelling. Doing this makes it modular (i.e., you could
+replace the engine with a different one using the same consolidated states like
+a patient-level state transition model or a simpler Markov design), makes QC
+much easier and means that you can concentrate on programming your costs and
+QALYs correctly.
+
+For a patient-level STM, we would recommend the same thing - that is perform the
+simulation aspect for the disease modelling only and carefully consider which
+elements of costs and quality of life actually need to be simulated on the
+patient level. Doing this could substantially reduce computation to produce
+identical results.
