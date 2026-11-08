@@ -7,15 +7,20 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, include = FALSE}
+```{r}
+#| include: false
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
 ```
 
-```{r setup}
+```{r}
+#| label: setup
+
 library(treatseqr)
+library(pbapply)
 ```
 
 # Introduction
@@ -29,25 +34,26 @@ shows how to draw their parameters so that the transition probabilities still
 follow "the rules" (i.e., summing to 1) en masse for use in a probabilistic
 sensitivity analysis (PSA). The PSA is then run and the `ggplot2` trace includes
 credible intervals (CrIs) for each state. Not every transition in the
-deterministic vignette is reproduced here (for example `on_trt -> palliative`
-is omitted) to keep the example focused.
+deterministic vignette is reproduced here (for example `on_trt` to `palliative`)
+as no transitions are built in there for this example.
 
 As with the `fixed-duration-tunnels.Rmd`, the five model states are:
 
-| State | Type | Tunnel length |
-|---|---|---|
-| `on_trt` | Pre-tunnel | — |
-| `surgery` | Fixed-duration tunnel | 3 cycles |
-| `failed_surg` | Fixed-duration tunnel (holding state) | 2 cycles |
-| `responder` | Full-length tunnel | `th` cycles |
-| `palliative` | Full-length tunnel | `th` cycles |
-
+  | State | Type | Tunnel length |
+  | --- | --- | --- |
+  | `on_trt` | Pre-tunnel | — |
+  | `surgery` | Fixed-duration tunnel | 3 cycles |
+  | `failed_surg` | Fixed-duration tunnel (holding state) | 2 cycles |
+  | `responder` | Full-length tunnel | `th` cycles |
+  | `palliative` | Full-length tunnel | `th` cycles |
 
 # Model specification
 
 In a PSA setting the specification is exactly the same:
 
-```{r specify_m}
+```{r}
+#| label: specify_m
+
 th <- 200L
 
 m_spec <- specify_m(
@@ -58,8 +64,9 @@ m_spec <- specify_m(
 m_spec$matrix_size
 ```
 
-The total matrix size is `r m_spec$matrix_size`: 1 pre-tunnel state + 3 + 2 +
-20 + 20 tunnel cycles + 1 death state.
+The total matrix size is `r m_spec$matrix_size`. This is the sum of the
+pre-tunnel, the two fixed tunnels and the two `th` length tunnels and death. In
+this case, this is 1 + 3 2 + `r th` + `r th` tunnel cycles + 1 death state.
 
 # Transition probabilities
 
@@ -73,8 +80,8 @@ In keeping with `fixed-duration-tunnels.Rmd`, the transitions are very simple.
 In a "real model", the user of `treatseqr` needs to make their own way of
 reliably generating transition probabilities in a probabilistic setting. Because
 this can considerably vary from model to model, it is outside the scope of the
-package and should be left up to you, the modeller. Usually in `R` there will
-be a way to do this, and we cover the most common approach (multivariate normal
+package and should be left up to you, the modeller. Usually in `R` there will be
+a way to do this, and we cover the most common approach (multivariate normal
 draws) below. The key is to make sure that the transition probabilities sum to 1
 and that the parameter draws are centred on the point estimates you use in the
 base-case analysis. Note that the *mean* of the PSA transition probabilities
@@ -83,32 +90,36 @@ transforms involved (`exp()`, `1 - exp(-H)`) are non-linear. That is expected:
 the base case is run at the point estimates, and the PSA characterises the
 uncertainty around it.
 
-For instance, if you are using Kaplan-Meier (KM) for first line, followed by external
-digitized KM data for subsequent lines (what we anticipate to be the most common
-use case for this package), we would advise to do the following:
+For instance, if you are using Kaplan-Meier (KM) for first line (presumably
+derived from patient-level data), followed by external digitized KM data for
+subsequent lines (what we anticipate to be the most common use case for this
+package), we would advise to do the following:
 
 1. Fit parametric survival models to the KM data for each line of therapy, using
    `flexsurv`, `survextrap`, `cuRe`, `rstpm2` and so on.
 2. Get the parameters from the fitted models, including the uncertainty taking
    covariance into account (e.g., variance-covariance matrix from `flexsurv`,
-others where appropriate). Make sure you know how these are transformed when
-provided to you (sometimes you will need to do some maths on paper for this.
-Make sure to document it in the function you write to "convert" it to the form
-you will use the for the PSA).
+   others where appropriate). Make sure you know how these are transformed when
+   provided to you (sometimes you will need to do some maths on paper for this.
+   Make sure to document it in the function you write to "convert" it to the
+   form you will use the for the PSA).
 3. use random uniform draws (i.e., `runif()`) to generate streams of random
    numbers, and develop a function to take random draws of parameters. The
-simplest example is `mvtnorm::rmvnorm()` for simple models that just need a set
-of parameters that are correlated. Note that this incorporates the random number
-draws as well so you have less than ideal control and have to be careful about
-the random seed. Often, one can get into a situation whereby the random
-stream can more easily be conserved by pre-drawing the uniform draws and then
-feeding that into a similar function of your own making. Note that you can look
-at the source code for `mvtnorm::rmvnorm()` to see the more familiar "chol"
-method, which is quite simple to implement in an efficient way. This boils down
-to the below. Note that you can store the `chol()` ahead of time so you don't
-need to calculate it thousands of times, just once per PSA:
+   simplest example is `mvtnorm::rmvnorm()` for simple models that just need a
+   set of parameters that are correlated. Note that this incorporates the random
+   number draws as well so you have less than ideal control and have to be
+   careful about the random seed. Often, one can get into a situation whereby
+   the random stream can more easily be conserved by pre-drawing the uniform
+   draws and then feeding that into a similar function of your own making. Note
+   that you can look at the source code for `mvtnorm::rmvnorm()` to see the more
+   familiar "chol" method, which is quite simple to implement in an efficient
+   way. This boils down to the below. Note that you can store the `chol()` ahead
+   of time so you don't need to calculate it thousands of times, just once per
+   PSA:
 
-```{r mvnorm_draws}
+```{r}
+#| label: mvnorm_draws
+
 set.seed(12938)
 n_illus <- 1000
 mu_illus <- c(a = 1, b = 2, c = 3)
@@ -189,33 +200,33 @@ mvnorm_draws <- function(rng, params, vcov = NULL, R = NULL) {
 ```
 
 4. Now that you have parametric model parameters for every PSA iteration, you
-   can pass them to the appropriate functions *for (cumulative) hazards*, and
-**not for survival**. For example, for simple `flexsurv` models there are
-in-built functions for this already. (e.g. exponential hazard:
-`flexsurv::hexp()`, exponential cumulative hazard: `flexsurv::Hexp()`). You can
-use these to calculate transition probabilities for each model cycle that sum to
-1, and correspond to each other for the different states. Note that this
-relies on an "additive hazards" (competing risks) assumption: on the hazard
-scale, the transitions out of a state add up. For each destination state $k$,
-the change in cumulative hazard over model cycle $t$ (i.e. the interval
-$[t-1, t)$) is:
+   can pass them to the appropriate functions for cumulative hazards, and **not
+   for survival**. For example, for simple `flexsurv` models there are in-built
+   functions for this already. (e.g. exponential hazard: `flexsurv::hexp()`,
+   exponential cumulative hazard: `flexsurv::Hexp()`). You can use these to
+   calculate transition probabilities for each model cycle that sum to 1, and
+   correspond to each other for the different states. Note that this relies on
+   an "additive hazards" (competing risks) assumption: on the hazard scale, the
+   transitions out of a state add up. For each destination state $k$, the change
+   in cumulative hazard over model cycle $t$ (i.e. the interval $[t - 1, t)$)
+   is:
 
 $$
-\Delta H_k(t) = H_k(t) - H_k(t-1)
+  \Delta H_k(t) = H_k(t) - H_k(t - 1)
 $$
 
 The probability of leaving the current state during cycle $t$ uses the *total*
 cumulative hazard across all destinations:
 
 $$
-p_{\text{exit}}(t) = 1 - \exp\left(-\sum_{j} \Delta H_j(t)\right)
+  p_{\text{exit}}(t) = 1 - \exp\left( -\sum_{j} \Delta H_j(t) \right)
 $$
 
 This is then shared between destinations in proportion to each one's hazard
 increment over the cycle:
 
 $$
-p_k(t) = \frac{\Delta H_k(t)}{\sum_{j} \Delta H_j(t)} \, p_{\text{exit}}(t)
+  p_k(t) = \frac{\Delta H_k(t)}{\sum_{j} \Delta H_j(t)} \, p_{\text{exit}}(t)
 $$
 
 The probability of staying is $1 - p_{\text{exit}}(t)$, which `treatseqr`
@@ -234,16 +245,16 @@ If instead a transition's data are on the model-time clock (a *clock-forward*
 assumption), the tunnel position $d$ no longer tells you the time at which to
 evaluate $H_k$, and you would need to handle that transition differently.
 
-A consequence worth flagging is **background mortality**. Tunnel states know
-how long a patient has been in the state, but not the model time (and therefore
-not the patient's age). An age-dependent general-population mortality floor, of
-the kind usually expected in HTA submissions, cannot be applied inside a tunnel
-directly. Options include folding an average background hazard into each
-transition's `die` hazard, or applying the floor at the trace level afterwards;
-either way, you should document and justify the choice.
+A consequence worth flagging is background mortality. Tunnel states track only
+sojourn time. An age-dependent general-population mortality floor, of the kind
+usually expected in HTA submissions, cannot be applied inside a tunnel directly.
+Options include folding an average background hazard into each transition's
+`die` hazard, or applying the floor at the trace level afterwards; either way,
+you should document and justify the choice.
 
+```{r}
+#| label: time_units
 
-```{r time_units}
 # NOTE: be very careful here about the time unit of the analysis and the time
 # unit of the model! hazards are in continuous time, and transition
 # probabilities are in discrete time. This means you need to align
@@ -259,8 +270,9 @@ tuota <- 30.44 / days_in_a_year
 cl <- 7 / days_in_a_year
 ```
 
+```{r}
+#| label: prob_probs_function
 
-```{r prob_probs_function}
 # H_list: named list of cumulative hazard vectors (length n + 1, starting at t = 0),
 # one per destination. Returns an n x K matrix of competing-risk TPs.
 cum_haz_to_tps <- function(H_list) {
@@ -341,20 +353,23 @@ deterministic examples.
 
 ### A note about scales
 
-`flexsurv` estimates its models on a *transformed* scale (for example
-`log(rate)`, `log(shape)`, `log(scale)`), and that is the scale which
-`coef(fit)` and `vcov(fit)` are produced. The multivariate normal is only
-appropriate on that same scale. Drawing `rate` or `shape` directly could give
-you the wrong numbers. So the structure below stores `coefs` and `vcov` exactly
-as `flexsurv` returns them, and the inverse transforms (which `flexsurv` exposes
-per distribution in `flexsurv::flexsurv.dists[[dist]]$inv.transforms`) are
-applied *after* the draw to recover the natural-scale parameters that the hazard
-functions expect. With a real fit, `coefs = coef(fit)` and `vcov = vcov(fit)` is
-all you need. Note also that the off-diagonal elements of `vcov` are rarely zero
-in practice (log-shape and log-scale of a Weibull are usually strongly
-correlated), so the Weibull examples below carry a non-zero covariance:
+`flexsurv` estimates its models on a transformed scale (for example `log(rate)`,
+`log(shape)`, `log(scale)`), and that is the scale which `coef(fit)` and
+`vcov(fit)` are produced. The multivariate normal is only appropriate on that
+same scale. Drawing `rate` or `shape` directly could give you the wrong numbers.
 
-```{r stats_output}
+The structure below stores `coefs` and `vcov` exactly as `flexsurv` returns
+them, and the inverse transforms (which `flexsurv` exposes per distribution in
+`flexsurv::flexsurv.dists[[dist]]$inv.transforms`) are applied *after* the draw
+to recover the natural-scale parameters that the hazard functions expect. With a
+real fit, `coefs = coef(fit)` and `vcov = vcov(fit)` is all you need. Note also
+that the off-diagonal elements of `vcov` are rarely zero in practice (log-shape
+and log-scale of a Weibull are usually strongly correlated), so the Weibull
+examples below carry a non-zero covariance (which is made up):
+
+```{r}
+#| label: stats_output
+
 # small helper so every vcov includes parameter names. x is the vector of
 # standard errors on the transformed scale, and rho the correlation (used for
 # the 2-parameter distributions only).
@@ -438,20 +453,18 @@ Survival-driven hazards describe the *time-to-event* transitions. They do not
 reproduce the two fixed-duration structures from `fixed-duration-tunnels.Rmd`,
 and it is easy to get this wrong:
 
-- `surgery` is a 3-cycle tunnel with a **decision-tree node** at `d = 3`: every
-  patient leaves at the end of the tunnel, split between `failed_surg`,
-  `responder` and `die`. A cumulative-hazard extrapolation evaluated at
-  `d = 1, 2, 3` gives a small exit probability at each cycle and a large
-  `p_stay` at `d = 3`. `treatseqr` then treats `d = 3` as a holding state and
-  re-applies the week-3 hazard increment forever, which is not the model we
-  want. The node has to be imposed explicitly on the last cycle.
-- `failed_surg` is a 2-cycle tunnel with a **holding state** at `d = 2`: the
-  `d = 2` transition probabilities are re-applied every subsequent cycle. That is
-  a constant-hazard (exponential) extrapolation from the end of the tunnel, so
-  the hazard feeding it should be constant too. Freezing the week-2 increment of
-  a Weibull with a rising hazard would quietly understate exits for the rest of
-  the horizon. This is why `failed_surg -> palliative` is specified as `exp`
-  above.
+- `surgery` is a 3-cycle tunnel with a decision-tree node at `d = 3`. Patients
+  go to `failed_surg`, `responder` and `die` with certainty. A cumulative-hazard
+  extrapolation evaluated at `d = 1, 2, 3` would provide a small exit
+  probability at each cycle and a large `p_stay` at `d = 3`. This would result
+  in treatment as a holding state. Therefore, we need to make the probability of
+  staying in this decision node 0 for all PSA iterations.
+- `failed_surg` is a 2-cycle tunnel with a holding state at `d = 2`. These are
+  uncommon in practice but still possible. Note that it must use a constant
+  exponential decay. This is because `d = 2` transition probabilities are
+  re-applied every subsequent cycle. Using any non-exponential distribution
+  would be wrong. Remember that in that situation wall and sojourn time are both
+  lost.
 
 For the node we need a probabilistic split that always sums to 1. The natural
 choice is a Dirichlet distribution, parameterised as pseudo-counts (here the
@@ -459,7 +472,9 @@ choice is a Dirichlet distribution, parameterised as pseudo-counts (here the
 100 patients). A Dirichlet draw is a set of independent gamma draws normalised
 to sum to 1, so it can use the same uniform streams as everything else:
 
-```{r node_output}
+```{r}
+#| label: node_output
+
 node_output <- list(
   surgery = c(failed_surg = 35, responder = 55, die = 10)
 )
@@ -469,7 +484,7 @@ If you can arrange the parameters and variance-covariance matrices in this way,
 you can then use a function to produce "blocks" of transitions, with one column
 per iteration of the PSA. `R` is "column-major" so the columns are the
 iterations and the rows are the cycles, as it would be very slow to do it the
-other way around. 
+other way around.
 
 Because `R` is vectorised, drawing in this way is very fast and efficient, and
 you can use the same random number stream for each PSA. Essentially, you
@@ -482,13 +497,15 @@ It helps to draw the uniforms in a local scope so the global random number
 generator is left as you found it. Otherwise `set.seed()` somewhere else in the
 model means something different depending on whether the PSA draws have run or
 not. Second, every uniform stream should have a name
-(`state.destination.parameter`) and, these should be looked it up by name
-rather than by column position. If you later add a transition, or want to
-compare two scenarios with common random numbers, the streams feeding the
-transitions you did not touch stay exactly the same. You can also keep the named
-`rng` matrix for auditing, and pass it back in via the `rng` argument.
+(`state.destination.parameter`) and, these should be looked it up by name rather
+than by column position. If you later add a transition, or want to compare two
+scenarios with common random numbers, the streams feeding the transitions you
+did not touch stay exactly the same. You can also keep the named `rng` matrix
+for auditing, and pass it back in via the `rng` argument.
 
-```{r draw_params}
+```{r}
+#| label: draw_params
+
 # Map the draws from flexsurv's estimation scale back to the natural scale
 # the H*() functions expect. flexsurv.dists records, per distribution, the
 # parameter names (in order) and the inverse transform for each one, so we
@@ -588,12 +605,14 @@ range(prob_params$on_trt$die$params)
 range(prob_params$surgery$failed_surg$params["shape", ])
 ```
 
-The decision-node splits are drawn in the same way, one Dirichlet per node,
-with streams named `state.node.destination`. Each state's draws come back as a
+The decision-node splits are drawn in the same way, one Dirichlet per node, with
+streams named `state.node.destination`. Each state's draws come back as a
 `destinations x n_draws` matrix so they can be indexed by iteration exactly like
 the survival parameters:
 
-```{r draw_nodes}
+```{r}
+#| label: draw_nodes
+
 draw_nodes <- function(node_output, n_draws, rng = NULL, seed = NULL) {
   stopifnot(xor(is.null(seed), is.null(rng)))
 
@@ -642,13 +661,15 @@ a set process from this point onwards:
    model, using the `get_prob_tps()` function defined above.
 4. For any state with a decision node, overwrite the last cycle of its tunnel
    with the node split (so `p_stay = 0` there).
-5. Compute `p_stay` as `1 - p_exit` and populate the transition probability matrix for
-   that iteration of the PSA.
+5. Compute `p_stay` as `1 - p_exit` and populate the transition probability
+   matrix for that iteration of the PSA.
 6. Validate the transition probability matrix for that iteration of the PSA, and
    then run the model for that iteration, storing the consolidated trace for
-that iteration.
+   that iteration.
 
-```{r psa_set_up}
+```{r}
+#| label: psa_set_up
+
 get_params_psa <- function(prob_params, iter) {
   rapply(
     prob_params,
@@ -666,8 +687,9 @@ get_params_psa(node_params, 1)$surgery
 
 Now we can use a "router" for the method to get the cumulative hazard:
 
+```{r}
+#| label: get_cum_haz_func
 
-```{r get_cum_haz_func}
 # router to the method to get cumulative hazard for each distribution. Downside
 # is you need to know what to put in each function!
 route_method_cum_haz <- function(dist) {
@@ -698,7 +720,9 @@ automatically cycle through the states and destinations to get the cumulative
 hazard functions for each destination state. We can then use those to compute
 the transition probabilities for each cycle of the model.
 
-```{r cumulative_hazards}
+```{r}
+#| label: cumulative_hazards
+
 generate_cum_haz <- function(time_points, params) {
   lapply(params, function(state) {
     lapply(state, function(dest) {
@@ -721,8 +745,11 @@ cum_hazards <- generate_cum_haz(
 Now that we have the cumulative hazards, we can get the transition probabilities
 for this PSA iteration. This means we can start to connect everything up!
 
+```{r}
+#| label: psa_setup_full
+#| fig-width: 7
+#| fig-height: 5
 
-```{r psa_setup_full, fig.width = 7, fig.height = 5}
 # make sure the states are ordered in the right way
 state_names <- c(
   "on_trt",
@@ -825,14 +852,14 @@ graphics::legend(
 )
 ```
 
-
-
 ## Bringing it all together
 
 Now that we've done all that, we can populate a 3d array with the probabilistic
 trace:
 
-```{r psa_runner}
+```{r}
+#| label: psa_runner
+
 run_psa_iteration <- function(
   time_points,
   prob_params,
@@ -872,8 +899,9 @@ head(run_psa_iteration(
   m_spec
 )$t, 2)
 
-# run the psa:
-psa_output <- vapply(
+# run the psa (with a progress bar).
+# NOTE: this is where you would use parallel (recommend future.apply package)
+psa_output <- pbvapply(
   seq_len(n_psa),
   function(iter) {
     run_psa_iteration(
@@ -910,7 +938,9 @@ the credible interval. The point estimates go through exactly the same pipeline
 as a PSA iteration, with the inverse transforms applied to the `coefs` and the
 node pseudo-counts normalised:
 
-```{r base_case}
+```{r}
+#| label: base_case
+
 point_params <- lapply(flexsurv_output, function(state) {
   lapply(state, function(dest) {
     coef_mat <- matrix(
@@ -940,7 +970,11 @@ trace_bc <- consolidate_treatseqr_trace(
 )$t
 ```
 
-```{r cri_plot, fig.width = 7, fig.height = 5}
+```{r}
+#| label: cri_plot
+#| fig-width: 7
+#| fig-height: 5
+
 # 2.5%, 50% and 97.5% quantiles over iterations: a 3 x (th + 1) x n_states array
 q <- apply(psa_output, c(1, 2), quantile, probs = c(0.025, 0.5, 0.975))
 
@@ -984,5 +1018,143 @@ is a useful plot to produce routinely: a base case that sits near the edge of
 (or outside) the credible interval usually indicates a problem with the
 parameter draws, such as drawing on the wrong scale.
 
-Fully integrating the treatseqr engine into your model's PSA is up to you, but
+# The same PSA with the package functions
+
+Everything above was written by hand so that each step is visible. However, we
+have wrapped this process up into some functions to make it a bit easier.
+`treatseqr` functions also provide some bookkeeping and validation of what's
+being produced (parameter scales, inverse transforms, named random-number
+streams, merging injected rows, structural validation). This includes:
+
+1. `specify_psa()` takes the survival models in exactly the structure we already
+   built (`flexsurv_output`), plus the model structure, and validates
+   everything. Each destination can be a `flexsurvreg` fit instead of a
+   `list(dist, coefs, vcov)`, in which case the coefficients and
+   variance-covariance matrix are taken from the fit.
+2. `draw_psa()` draws the model parameters for all PSA iterations. Anything that
+   is *not* a survival model is drawn **by you** and passed in as `tp_draws`.
+   Note that `NA` makes the survival models cover that cycle for flexibility.
+   `tp_point` includes the deterministic values of the same cells for the base
+   case.
+3. `tp_source_psa()` returns the transition probability list for one iteration
+   (or the base case with `iter = NULL`), ready for `generate_m_list()`.
+
+```{r}
+#| label: pkg_specify
+
+psa_spec <- specify_psa(
+  surv = flexsurv_output,
+  m_spec = m_spec,
+  state_names = state_names,
+  th = th,
+  tuota = tuota,
+  cl = cl
+)
+psa_spec
+```
+
+The node is the one piece we need to draw ourselves. Using the exported
+`draw_uniforms()` and `dirichlet_draws()` with the same stream names and seed as
+before gives exactly the same draws as `draw_nodes()` did. The matrices are
+`n_cycles x n_draws`, with `NA` in cycles 1 and 2 so those rows come from the
+survival models:
+
+```{r}
+#| label: pkg_node
+
+alpha <- node_output$surgery
+node_rng <- draw_uniforms(
+  n_psa,
+  paste("surgery.node", names(alpha), sep = "."),
+  seed = 54321
+)
+node_draws <- dirichlet_draws(node_rng, alpha)
+
+surgery_tp_draws <- lapply(setNames(names(alpha), names(alpha)), function(k) {
+  rbind(matrix(NA_real_, nrow = 2, ncol = n_psa), node_draws[, k])
+})
+surgery_tp_point <- lapply(setNames(names(alpha), names(alpha)), function(k) {
+  c(NA, NA, unname(alpha[[k]] / sum(alpha)))
+})
+```
+
+`draw_psa()` tells you which cycles of which states are injected, and would have
+warned us had we left `surgery` to end in a holding state using a Weibull:
+
+```{r}
+#| label: pkg_draw
+
+psa_draws <- draw_psa(
+  psa_spec,
+  n_draws = n_psa,
+  seed = 12345,
+  tp_draws = list(surgery = surgery_tp_draws),
+  tp_point = list(surgery = surgery_tp_point)
+)
+psa_draws
+```
+
+The per-iteration function collapses to the deterministic pipeline with one
+extra line at the top:
+
+```{r}
+#| label: pkg_run
+
+run_psa_iteration_pkg <- function(psa_draws, iter) {
+  tp_i <- tp_source_psa(psa_draws, iter)
+  m_i <- generate_m_list(m_spec, tp_i, state_names = state_names)
+  trace_i <- extrapolate_treatseqr(m = m_i, spec = m_spec)
+  consolidate_treatseqr_trace(trace_i, m_spec, state_names)
+}
+psa_output_pkg <- pbvapply(
+  seq_len(n_psa),
+  function(iter) run_psa_iteration_pkg(psa_draws, iter)$t,
+  matrix(NA_real_, nrow = th + 1, ncol = length(state_names))
+)
+```
+
+Because the stream names, seeds, hazard functions and node overwrite are the
+same, the result is not just close to the hand-rolled version but identical, and
+so is the base case:
+
+```{r}
+#| label: pkg_check
+
+identical(psa_output_pkg, psa_output)
+identical(tp_source_psa(psa_draws), tp_source_bc)
+
+# sanity check: all rowsums should be 1 for all iterations
+# NOTE: aperm moves the dimensions around in an array
+cohort_totals <- colSums(aperm(psa_output_pkg, c(2, 1, 3)))
+all(abs(cohort_totals - 1) < 1e-10)
+```
+
+## Word of caution
+
+You must:
+
+- Choose and fit the survival models
+- Censor correctly for each transition
+- Decide whether each fixed-duration tunnel ends in a decision node or a holding
+  state
+- Draw anything that is not a survival model yourself
+
+Fully integrating the `treatseqr` engine into your model's PSA is up to you, but
 this example is likely to be very flexible and essentially applies to any model.
+
+## Footnote about building models
+
+One additional point to tag onto the above is that the computationally intense
+part of the sequencing modelling exercise is the extrapolation of state
+residency itself. We would recommend doing this in isolation to the rest of the
+cost-effectiveness modelling. Doing this makes it modular (i.e., you could
+replace the engine with a different one using the same consolidated states like
+a patient-level state transition model or a simpler Markov design), makes QC
+much easier and means that you can concentrate on programming your costs and
+QALYs correctly.
+
+For a patient-level STM, we would recommend the same thing - that is perform the
+simulation aspect for the disease modelling only and carefully consider which
+elements of costs and quality of life actually need to be simulated on the
+patient level. Doing this could substantially reduce computation to produce
+identical results.
