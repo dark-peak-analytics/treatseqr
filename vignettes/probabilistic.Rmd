@@ -1120,13 +1120,27 @@ so is the base case:
 ```{r}
 #| label: pkg_check
 
-identical(psa_output_pkg, psa_output)
-identical(tp_source_psa(psa_draws), tp_source_bc)
+cat(paste0(
+  "It is ",
+  identical(psa_output_pkg, psa_output),
+  " that the hand-specified PSA exactly matches treatseqr specified PSA.\n"
+))
+cat(paste0(
+  "It is ",
+  identical(tp_source_psa(psa_draws), tp_source_bc),
+  " that the base-case TP set matches the same derived from the PSA object.\n"
+))
 
 # sanity check: all rowsums should be 1 for all iterations
 # NOTE: aperm moves the dimensions around in an array
 cohort_totals <- colSums(aperm(psa_output_pkg, c(2, 1, 3)))
-all(abs(cohort_totals - 1) < 1e-10)
+cat(
+  paste0(
+    "It is ",
+    all(abs(cohort_totals - 1) < 1e-10),
+    " that cohort totals sum to 1 in all PSA iterations, in all cycles\n"
+  )
+)
 ```
 
 ## Word of caution

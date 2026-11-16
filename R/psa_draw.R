@@ -453,7 +453,10 @@ tp_source_psa <- function(draws, iter = NULL) {
       iter == as.integer(iter),
       iter >= 1,
       iter <= draws$n_draws,
-      msg = sprintf("'iter' must be a single integer in 1:%d, or NULL for the base case", draws$n_draws)
+      msg = sprintf(
+        "'iter' must be a single integer in 1:%d, or NULL for the base case",
+        draws$n_draws
+      )
     )
     iter <- as.integer(iter)
   }
@@ -471,7 +474,11 @@ tp_source_psa <- function(draws, iter = NULL) {
       for (dest in names(spec$surv[[state]])) {
         d <- spec$surv[[state]][[dest]]
         pars <- if (base_case) {
-          coef_mat <- matrix(d$coefs, nrow = 1L, dimnames = list(NULL, names(d$coefs)))
+          coef_mat <- matrix(
+            d$coefs,
+            nrow = 1L,
+            dimnames = list(NULL, names(d$coefs))
+          )
           drop(flexsurv_inv_transform(coef_mat, d$dist))
         } else {
           draws$params[[state]][[dest]]$params[, iter]
